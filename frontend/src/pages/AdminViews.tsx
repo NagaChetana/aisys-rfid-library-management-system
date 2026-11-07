@@ -20,7 +20,7 @@ export const UsersRolesView: React.FC = () => {
   useEffect(() => {
     async function loadUsers() {
       try {
-        const res = await fetch('/api/admin/users', {
+        const res = await fetch('http://127.0.0.1:8000/api/admin/users', {
           headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
         });
         if (res.ok) {

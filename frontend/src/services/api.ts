@@ -1,6 +1,6 @@
 import { AuthResponse, Book, Member, DashboardStats, SystemHealth, VirtualShelfItem } from '../types';
 
-const BASE_URL = '/api';
+const BASE_URL = 'http://127.0.0.1:8000/api';
 
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('access_token');
