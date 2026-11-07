@@ -132,3 +132,114 @@ export interface SystemHealth {
   };
   offline_ready: boolean;
 }
+
+export interface CirculationTransaction {
+  id: number;
+  transaction_type: 'checkout' | 'checkin' | 'renew';
+  book_item_id: number;
+  accession_number: string;
+  book_title: string;
+  member_id: number;
+  member_name: string;
+  membership_number: string;
+  operator_user_id?: number;
+  protocol: string;
+  checkout_date: string;
+  due_date?: string;
+  return_date?: string;
+  renewal_count: number;
+  fine_amount: number;
+  notes?: string;
+  eas_bit?: boolean;
+  created_at: string;
+}
+
+export interface DueDateEnquiryResult {
+  accession_number: string;
+  book_title: string;
+  member_name: string;
+  membership_number: string;
+  checkout_date: string;
+  due_date: string;
+  renewal_count: number;
+  is_overdue: boolean;
+  days_overdue: number;
+  estimated_fine: number;
+}
+
+export interface Fine {
+  id: number;
+  member_id: number;
+  member_name: string;
+  membership_number: string;
+  circulation_transaction_id?: number;
+  amount: number;
+  paid_amount: number;
+  status: 'unpaid' | 'paid' | 'waived';
+  reason: string;
+  assessed_date: string;
+  settled_date?: string;
+}
+
+export interface RfidTag {
+  id: number;
+  tag_uid: string;
+  item_type: string;
+  book_item_id?: number;
+  accession_number?: string;
+  book_title?: string;
+  shelf_location?: string;
+  member_id?: number;
+  member_name?: string;
+  eas_bit: boolean;
+  status: 'active' | 'decommissioned' | 'lost';
+  last_scanned_at?: string;
+  created_at: string;
+}
+
+export interface RfidTagHistory {
+  id: number;
+  tag_uid: string;
+  item_type: string;
+  book_item_id?: number;
+  member_id?: number;
+  assigned_at: string;
+  deassigned_at?: string;
+  deassignment_reason?: string;
+  actor_user_id?: number;
+}
+
+export interface StaffScanItem {
+  tag_uid: string;
+  item_type: string;
+  accession_number: string;
+  barcode: string;
+  book_title: string;
+  author: string;
+  status: string;
+  eas_bit: boolean;
+  is_reference_only: boolean;
+}
+
+export interface StaffScanResult {
+  reader_id: string;
+  timestamp: string;
+  total_detected: number;
+  items: StaffScanItem[];
+  unknown_tags: string[];
+  suppressed_duplicates: number;
+}
+
+export interface SmartCardTapResult {
+  entity_type: 'staff' | 'member' | 'unknown';
+  id?: number;
+  username?: string;
+  full_name?: string;
+  role?: string;
+  membership_number?: string;
+  status?: string;
+  fine_balance?: number;
+  smart_card_uid: string;
+  detail?: string;
+}
+

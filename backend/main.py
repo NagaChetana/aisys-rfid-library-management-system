@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
 import app.models  # Ensure all SQLAlchemy models are registered
-from app.api import auth, books, members, admin, reports
+from app.api import auth, books, members, admin, reports, circulation, rfid, interop
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,6 +42,9 @@ app.include_router(books.router, prefix=settings.API_V1_STR)
 app.include_router(members.router, prefix=settings.API_V1_STR)
 app.include_router(admin.router, prefix=settings.API_V1_STR)
 app.include_router(reports.router, prefix=settings.API_V1_STR)
+app.include_router(circulation.router, prefix=settings.API_V1_STR)
+app.include_router(rfid.router, prefix=settings.API_V1_STR)
+app.include_router(interop.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():

@@ -6,6 +6,9 @@ import { Dashboard } from './pages/Dashboard';
 import { BookCatalog } from './pages/BookCatalog';
 import { VirtualBookshelf } from './pages/VirtualBookshelf';
 import { Members } from './pages/Members';
+import { Circulation } from './pages/Circulation';
+import { RfidManagement } from './pages/RfidManagement';
+import { RfidSimulator } from './pages/RfidSimulator';
 import { UsersRolesView, AuditLogsView, SystemSettingsView } from './pages/AdminViews';
 import { Layers, Radio, ShieldAlert, Database, Repeat, Cpu, BarChart3 } from 'lucide-react';
 
@@ -45,37 +48,13 @@ const MainApp: React.FC = () => {
       case 'settings':
         return <SystemSettingsView />;
 
-      // Batch 2 Placeholders
+      // Batch 2 Features
       case 'circulation':
-        return (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center space-y-3">
-            <Repeat className="w-12 h-12 text-amber-400 mx-auto opacity-75" />
-            <h3 className="text-base font-bold text-white">Circulation & Business Rules Engine</h3>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Checkout, checkin, loan renewals, due-date inquiry, and enforcement of reference-book restrictions, blocked members, and fine limits ($15 cap) scheduled for <strong>Batch 2</strong>.
-            </p>
-          </div>
-        );
+        return <Circulation />;
       case 'rfid-mgmt':
-        return (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center space-y-3">
-            <Radio className="w-12 h-12 text-cyan-400 mx-auto opacity-75" />
-            <h3 className="text-base font-bold text-white">RFID Tag Management & History</h3>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Tag assignment, duplicate prevention, and historical tag assignment tracking table scheduled for <strong>Batch 2</strong>.
-            </p>
-          </div>
-        );
+        return <RfidManagement />;
       case 'simulator':
-        return (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center space-y-3">
-            <Cpu className="w-12 h-12 text-indigo-400 mx-auto opacity-75" />
-            <h3 className="text-base font-bold text-white">Hardware Reader Simulator & Interoperability</h3>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Virtual desktop staff pad reader, handheld antenna, and NCIP 2.0 & SIP2 adapter testbeds scheduled for <strong>Batch 2</strong>.
-            </p>
-          </div>
-        );
+        return <RfidSimulator />;
 
       // Batch 3 Placeholders
       case 'inventory':

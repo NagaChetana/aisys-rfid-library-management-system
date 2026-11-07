@@ -1,3 +1,4 @@
+import uuid
 import pytest
 from fastapi.testclient import TestClient
 from main import app
@@ -6,6 +7,7 @@ from app.models.catalog import Book, BookItem
 from app.models.member import Member
 
 client = TestClient(app)
+TEST_RUN_ID = uuid.uuid4().hex[:6]
 
 def test_system_health():
     """Verify health and diagnostics endpoints (FR11, NFR07)."""
@@ -80,9 +82,11 @@ def test_book_catalog_list_and_search():
 
 def test_book_creation_with_copies():
     """Verify cataloguing a book with distinct physical copies and unique accession numbers (FR01)."""
+    test_isbn = f"978-0596{TEST_RUN_ID}"
+    test_title = f"Head First Design Patterns {TEST_RUN_ID}"
     payload = {
-        "isbn": "978-0596007126",
-        "title": "Head First Design Patterns",
+        "isbn": test_isbn,
+        "title": test_title,
         "subtitle": "A Brain-Friendly Guide",
         "author_name": "Eric Freeman & Elisabeth Robson",
         "category_code": "004",
@@ -95,7 +99,7 @@ def test_book_creation_with_copies():
     res = client.post("/api/books", json=payload)
     assert res.status_code == 201
     data = res.json()
-    assert data["isbn"] == "978-0596007126"
+    assert data["isbn"] == test_isbn
     assert data["copies_count"] == 3
     assert len(data["items"]) == 3
 
@@ -114,7 +118,8 @@ def test_book_creation_with_copies():
 def test_add_copy_to_existing_book():
     """Verify appending a new physical copy to an existing title (FR01)."""
     # Find book
-    books_res = client.get("/api/books?q=Head First")
+    books_res = client.get(f"/api/books?q={TEST_RUN_ID}")
+    assert books_res.status_code == 200
     book_id = books_res.json()["items"][0]["id"]
     initial_copies = books_res.json()["items"][0]["copies_count"]
 
@@ -145,8 +150,8 @@ def test_virtual_bookshelf():
 def test_member_management():
     """Verify member creation, card binding, and block/unblock actions (FR04, FR11)."""
     member_payload = {
-        "full_name": "Evelyn Reed",
-        "email": "evelyn.reed@university.edu",
+        "full_name": f"Evelyn Reed {TEST_RUN_ID}",
+        "email": f"evelyn.{TEST_RUN_ID}@university.edu",
         "phone": "+1-555-0199",
         "membership_type": "researcher",
         "max_allowed_loans": 7
@@ -154,14 +159,15 @@ def test_member_management():
     create_res = client.post("/api/members", json=member_payload)
     assert create_res.status_code == 201
     member = create_res.json()
-    assert member["full_name"] == "Evelyn Reed"
+    assert member["full_name"] == f"Evelyn Reed {TEST_RUN_ID}"
     assert member["status"] == "active"
     member_id = member["id"]
 
     # Assign smart card UID
-    card_res = client.post(f"/api/members/{member_id}/assign-card", json={"smart_card_uid": "CARD-EVELYN-777"})
+    card_uid = f"CARD-EVELYN-{TEST_RUN_ID.upper()}"
+    card_res = client.post(f"/api/members/{member_id}/assign-card", json={"smart_card_uid": card_uid})
     assert card_res.status_code == 200
-    assert card_res.json()["smart_card_uid"] == "CARD-EVELYN-777"
+    assert card_res.json()["smart_card_uid"] == card_uid
 
     # Block member
     block_res = client.post(f"/api/members/{member_id}/block?reason=Lost%20Item%20Investigation")

@@ -9,7 +9,7 @@ router = APIRouter(prefix="/interop", tags=["Interoperability (NCIP 2.0 & SIP2)"
 
 @router.post("/ncip")
 def process_ncip_message(
-    payload: Dict[str, Any] = Body(..., example={"action": "CheckoutItem", "UserId": "MEM-00001", "ItemId": "ACC-000002"}),
+    payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -21,7 +21,7 @@ def process_ncip_message(
 
 @router.post("/sip2")
 def process_sip2_frame(
-    payload: Dict[str, str] = Body(..., example={"raw_frame": "11N0N20261108    000000AOUNIVERSITY-LIB|AAMEM-00001|ABACC-000002|"}),
+    payload: Dict[str, str] = Body(...),
     db: Session = Depends(get_db)
 ):
     """
