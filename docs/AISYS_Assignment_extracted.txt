@@ -1,0 +1,350 @@
+PAGE_COUNT:7
+
+=== PAGE 1 ===
+1 Purpose and objective
+Develop an RFID-enabled library solution that integrates with an existing Integrated Library Management
+Software system without changing, deleting, or corrupting existing records. The software must support library
+operations, RFID workflows, reporting, data migration, testing, documentation, offline maintenance, and user
+training.
+The candidate team must translate these requirements into a modular prototype and a production-oriented
+implementation plan. Where an external device, vendor SDK, existing database schema, or live service is
+unavailable, the team must define an adapter interface and supply a working mock.
+2 Expected outcome
+●
+●
+●
+●
+●
+A web-based library application or demonstrable extension covering the required functional workflows.
+An RFID integration or middleware service with mock adapters for staff readers, handheld readers,
+security gates, smart cards, cameras, email, SMS, and print services.
+A controlled migration utility for approximately 20,000 source records supplied in spreadsheet format.
+A requirements traceability matrix, architecture package, test evidence, deployment guide, administration
+guide, user guide, and demonstration.
+A solution that can be activated, updated, upgraded, and supported in an offline or isolated environment.
+3 Scope boundaries
+Included software work Excluded from candidate implementation
+Library workflows, web interface, database, search, reports,
+RFID middleware, migration, security controls, test
+automation, documentation, and demo.
+Manufacture, physical installation, or repair of RFID readers,
+gates, tags, smart cards, printers, PCs, servers, cameras, or
+cabling.
+Mocked integration with RFID devices and the existing ILMS
+through documented interfaces.
+Access to production systems, production databases,
+personal data, restricted networks, or any live institutional
+environment.
+Offline deployment design and update package. Claims of NCIP, SIP2, ISO, OEM, security, or performance
+certification without test evidence or authorised certification.
+4 Functional requirements
+ID Area Requirement
+FR 01 Core ILMS
+Support acquisition, cataloguing,
+serials, circulation, OPAC, barcode and
+spine-label workflows, and report
+generation.
+FR 02 Web and search
+Provide a web interface, full-text
+search, search engine, real-time
+indexing, net cataloguing, and virtual
+bookshelf.
+AISYS Software Development SOP Page 1
+
+=== PAGE 2 ===
+ID Area FR 03 RFID interoperability
+FR 04 Circulation
+FR 05 Tagging
+FR 06 Inventory
+FR 07 Security gate events
+FR 08 Dashboard and reports
+FR 09 Notifications
+FR 10 Data migration
+FR 11 Administration
+FR 12 Offline lifecycle
+AISYS Software Development SOP Requirement
+Integrate staff station, handheld reader,
+security gate, smart card, and item
+tags through middleware. Support
+NCIP 2.0 and an SIP2 adapter
+boundary.
+Support check-out, check-in, renewal,
+due-date enquiry, patron-card
+personalisation, reference-book
+restrictions, member blocking,
+configurable fine limits, and role-based
+circulation rights.
+Validate title or member records before
+tagging or re-tagging. Associate each
+RFID tag with its bibliographic or item
+record and support tag monitoring.
+Support stock verification, shelf
+management, misplaced or missing
+item identification, bulk reading, and
+audible or visible confirmation for
+handheld operations.
+Detect unauthorised or unissued items,
+read the security bit while the LMS is
+offline, record accession numbers, and
+integrate alarm, footfall, CCTV photo,
+and email-notification events.
+Provide library-usage statistics and
+reports for tagged items, members,
+circulation, operator or RFID client
+activity, fines, and gate events.
+Provide configurable email, SMS, and
+print notifications per user through
+provider-neutral adapters.
+Import approximately 20,000 records
+from spreadsheet files with validation,
+duplicate handling, error logs,
+reconciliation, and rollback.
+Provide user and role management,
+configuration, audit logs,
+software-version reporting, and system
+health information.
+Support offline activation, updates,
+upgrades, patches, and security
+updates. Produce an installable update
+package with rollback instructions.
+Page 2
+
+=== PAGE 3 ===
+5 Nonfunctional and operational requirements
+ID Area Requirement
+NFR 01 Data integrity
+Back up the existing database before
+integration. The solution must not
+modify, delete, or corrupt existing
+library records.
+NFR 02 Security and privacy
+Protect member, circulation, and
+institutional data. Use least privilege,
+secure secrets, audit logging, input
+validation, and encrypted transport
+where applicable.
+NFR 03 Compatibility
+Target Windows 11 clients, Windows
+Server 2022 or later, Ethernet
+networking, and a deployment model
+suitable for an isolated site.
+NFR 04 Licensing
+Identify all dependencies and licences.
+Pin dependency versions and
+document redistribution or offline-use
+restrictions.
+NFR 05 Testability
+Provide functional, integration,
+performance, migration, security,
+regression, and user-acceptance test
+evidence.
+NFR 06 Maintainability
+Use modular adapters, configuration
+outside code, structured logs,
+versioned database migrations,
+documented builds, and rollback
+procedures.
+NFR 07 Supportability
+Design diagnostics, health checks,
+structured logs, and runbooks for
+software and integration incidents.
+NFR 08 Documentation
+Provide system architecture, device
+configuration, IP and interface details,
+API documentation, software versions,
+installation steps, administration
+procedures, user procedures, and
+troubleshooting guidance.
+NFR 09 Delivery
+Complete the candidate exercise from
+D0 to D10 and identify all work
+remaining for production readiness.
+6 Required solution architecture
+The submission must use a layered design. Candidates may select the programming languages and
+frameworks, but must explain their choices and demonstrate the following boundaries.
+AISYS Software Development SOP Page 3
+
+=== PAGE 4 ===
+Layer Minimum responsibility
+User layer Staff web interface, OPAC or search interface, dashboard,
+reports, and administration.
+Application layer Cataloguing, circulation, member, fines, inventory,
+notification, reporting, and access-control services.
+RFID middleware Device-neutral commands and events for staff reader,
+handheld reader, gate, smart card, printer, and camera.
+Interoperability NCIP 2.0 adapter, SIP2 adapter boundary, and documented
+mock interfaces where vendor endpoints are unavailable.
+Data layer Transactional database, search index, audit log, migration
+staging area, and backup or restore process.
+Integration layer Email, SMS, print, CCTV-photo, and external ILMS
+connectors.
+Operations layer Configuration, secrets, offline installer, logs, health checks,
+updates, backups, and rollback.
+7 Mandatory deliverables
+ID Deliverable Contents
+D1 Requirements package
+Assumptions, clarification log, use
+cases, data dictionary, and
+requirement-to-feature traceability
+matrix.
+D2 Architecture package
+Context, component, deployment,
+database, interface, and security
+designs.
+D3 Working prototype
+Runnable application and mock
+integrations demonstrating the priority
+acceptance scenarios.
+D4 Source repository
+Source code, commit history, branch
+strategy, dependency lock files, sample
+configuration, and licence inventory.
+D5 Database and migration
+Schema, versioned migrations, sample
+synthetic dataset, import utility,
+validation report, reconciliation report,
+and rollback.
+D6 Test package
+Test plan, automated tests, manual
+scenarios, defect log, performance
+results, security checks, and UAT
+evidence.
+AISYS Software Development SOP Page 4
+
+=== PAGE 5 ===
+ID Deliverable Contents
+D7 Deployment package
+Offline installer or container package,
+environment checklist, configuration
+guide, backup, restore, update, and
+rollback procedures.
+D8 Operational documentation
+Administrator guide, user guide, API
+documentation, troubleshooting
+runbook, and training plan.
+D9 Demonstration
+Recorded or live demonstration,
+presentation, known limitations, and
+production-completion backlog.
+8 Priority acceptance scenarios
+ID Acceptance scenario
+AC 01
+Import a supplied spreadsheet into staging, reject invalid
+rows, identify duplicates, migrate valid records, and
+reconcile source and target counts.
+AC 02 Create or locate a bibliographic item, validate it, associate a
+mock RFID tag, and display the tag-to-item relationship.
+AC 03
+Check out, renew, and check in an item through a mocked
+NCIP or SIP2 flow while preserving an auditable transaction
+history.
+AC 04 Block circulation for a reference item, a blocked member, or
+a member whose fine exceeds a configurable limit.
+AC 05
+Use a handheld-reader mock to inventory a shelf and report
+missing and misplaced items with visible and audible
+confirmation events.
+AC 06
+Generate an unauthorised-removal event from the gate
+mock, record the accession number, attach a mock CCTV
+image, and queue an email notification.
+AC 07 Demonstrate staff smart-card login through a mock
+credential provider and enforce role-based permissions.
+AC 08
+Generate dashboard statistics and filterable reports for
+tagged items, members, circulation, operators, RFID clients,
+and gate events.
+AC 09 Install and run the solution without internet access, apply an
+offline update, and complete a documented rollback.
+AC 10
+Restore from backup after a simulated failed migration or
+integration change and prove that the original data remains
+intact.
+AISYS Software Development SOP Page 5
+
+=== PAGE 6 ===
+9 Standard operating procedure
+Follow the stages below in order. Each stage ends with a reviewable output. Do not begin production-style
+integration until the preceding review is complete.
+Stage 1 Initiation and controls D0
+●
+●
+●
+●
+Create the repository and issue tracker.
+Read this assignment and build the first requirements traceability matrix.
+Record assumptions, questions, risks, dependencies, and excluded work.
+Confirm that all data and credentials are synthetic.
+Stage 2 Requirements and design D1 to D2
+●
+●
+Prepare use cases and acceptance criteria.
+Define the domain model, database schema, APIs, event model, integration contracts, security controls,
+and deployment topology.
+●
+●
+Create mock contracts for unavailable ILMS and RFID interfaces.
+Hold a design review and record decisions.
+Stage 3 Foundation build D3
+●
+Implement project structure, configuration, authentication, role management, audit logging, health checks,
+database migrations, and test framework.
+●
+●
+Prepare synthetic seed data and a repeatable local build.
+Run static checks and baseline tests.
+Stage 4 Core library functions D4 to D5
+●
+●
+●
+Implement cataloguing, members, circulation, fines, restrictions, search, reporting, and dashboards.
+Demonstrate key user journeys and record defects.
+Update the traceability matrix and API documentation.
+Stage 5 RFID middleware and integrations D6
+●
+●
+●
+●
+Implement device-neutral commands and event handlers.
+Add NCIP 2.0 and SIP2 adapter boundaries with mocks.
+Implement tagging, inventory, gate-event, notification, smart-card, and camera workflows.
+Test retries, timeouts, duplicate events, and offline behaviour.
+Stage 6 Migration and resilience D7
+●
+●
+●
+●
+Profile the sample spreadsheet.
+Run validation and dry-run import.
+Reconcile counts and errors.
+Execute migration into the test database, then demonstrate rollback and restore.
+Stage 7 Verification D8
+●
+Run functional, integration, regression, performance, security, migration, backup, restore, offline-update,
+and rollback tests.
+●
+●
+Map every test result to a requirement.
+Triage defects by severity and retest fixes.
+AISYS Software Development SOP Page 6
+
+=== PAGE 7 ===
+10 Engineering controls
+Control Required practice
+Version control Use feature branches and reviewed merge requests. Keep
+meaningful commits. Tag the final evaluation release.
+Code quality Apply formatter, linter, static analysis, dependency scanning,
+and automated tests in the build pipeline.
+Configuration Keep environment-specific values outside source code.
+Supply a sample configuration without secrets.
+Secrets Do not commit passwords, tokens, certificates, private keys,
+or real personal data.
+Data protection Use synthetic data. Mask logs. Apply least privilege. Record
+every administrative and circulation action.
+Dependencies Pin versions and provide a software bill of materials with
+licence and offline-installation notes.
+Defects Record severity, reproduction steps, owner, status, fix
+version, and retest evidence.
+Change control Update the requirement, design, code, test, and
+documentation together when behaviour changes.
+AISYS Software Development SOP Page 7
