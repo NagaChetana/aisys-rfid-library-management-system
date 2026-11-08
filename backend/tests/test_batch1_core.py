@@ -68,7 +68,7 @@ def test_book_catalog_list_and_search():
     assert len(data["items"]) >= 5
 
     # Full text search by title
-    search_res = client.get("/api/books?q=Artificial Intelligence")
+    search_res = client.get("/api/books?q=Artificial Intelligence&limit=100")
     assert search_res.status_code == 200
     search_data = search_res.json()
     assert search_data["total"] >= 1

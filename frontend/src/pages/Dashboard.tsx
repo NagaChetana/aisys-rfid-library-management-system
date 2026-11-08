@@ -55,6 +55,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     fetchStats();
+
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('http://127.0.0.1:8000/api/events/stream');
+      const handleLiveEvent = () => {
+        api.getDashboardStats().then(setStats).catch(console.error);
+      };
+      eventSource.addEventListener('circulation_checkout', handleLiveEvent);
+      eventSource.addEventListener('circulation_checkin', handleLiveEvent);
+      eventSource.addEventListener('gate_alarm', handleLiveEvent);
+      eventSource.addEventListener('migration_executed', handleLiveEvent);
+      eventSource.addEventListener('migration_rolled_back', handleLiveEvent);
+    } catch (err) {
+      console.error('Dashboard SSE connection error:', err);
+    }
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
   }, []);
 
   if (loading && !stats) {

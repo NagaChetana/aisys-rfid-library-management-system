@@ -243,3 +243,125 @@ export interface SmartCardTapResult {
   detail?: string;
 }
 
+// ==========================================
+// Batch 3 Types
+// ==========================================
+
+export interface InventorySession {
+  id: number;
+  session_name: string;
+  target_shelf: string;
+  operator_user_id?: number;
+  status: 'in_progress' | 'completed' | 'cancelled';
+  total_expected: number;
+  total_scanned: number;
+  total_missing: number;
+  total_misplaced: number;
+  started_at: string;
+  completed_at?: string;
+}
+
+export interface InventoryScanItem {
+  id: number;
+  tag_uid: string;
+  book_item_id?: number;
+  accession_number?: string;
+  book_title?: string;
+  detected_shelf: string;
+  expected_shelf?: string;
+  scan_status: 'correct' | 'misplaced' | 'unknown_tag';
+  scanned_at: string;
+}
+
+export interface InventoryMissingItem {
+  book_item_id: number;
+  accession_number: string;
+  barcode: string;
+  title: string;
+  expected_shelf: string;
+  tag_uid?: string;
+}
+
+export interface InventorySessionDetail extends InventorySession {
+  scans: InventoryScanItem[];
+  missing_items: InventoryMissingItem[];
+}
+
+export interface BulkInventoryScanResult {
+  session_id: number;
+  scanned_count: number;
+  suppressed_duplicates: number;
+  correctly_located: number;
+  misplaced: number;
+  unknown_tags: number;
+  items: InventoryScanItem[];
+}
+
+export interface GateEvent {
+  id: number;
+  reader_id: string;
+  tag_uid: string;
+  book_item_id?: number;
+  accession_number?: string;
+  book_title?: string;
+  event_type: 'unauthorized_removal' | 'authorized_passage' | 'unknown_tag' | 'unlinked_tag';
+  eas_bit_state: boolean;
+  alarm_triggered: boolean;
+  cctv_image_url?: string;
+  timestamp: string;
+}
+
+export interface GateStats {
+  total_events: number;
+  total_alarms: number;
+  total_authorized: number;
+  today_footfall: number;
+  gate_status: string;
+}
+
+export interface NotificationRecord {
+  id: number;
+  channel: string;
+  recipient: string;
+  subject?: string;
+  body: string;
+  status: 'queued' | 'sent' | 'failed';
+  attempts: number;
+  error_message?: string;
+  created_at: string;
+  sent_at?: string;
+}
+
+export interface MigrationBatch {
+  id: number;
+  batch_number: string;
+  filename: string;
+  total_records: number;
+  valid_records: number;
+  invalid_records: number;
+  migrated_records: number;
+  status: 'staged' | 'validated' | 'validated_with_errors' | 'migrated' | 'rolled_back' | 'failed';
+  error_log?: string;
+  created_at: string;
+  migrated_at?: string;
+}
+
+export interface StagedRowError {
+  row_number: number;
+  title?: string;
+  errors: string[];
+}
+
+export interface MigrationValidationReport {
+  batch_id: number;
+  batch_number: string;
+  filename: string;
+  status: string;
+  total_records: number;
+  valid_records: number;
+  invalid_records: number;
+  duplicate_records: number;
+  sample_errors: StagedRowError[];
+}
+
+

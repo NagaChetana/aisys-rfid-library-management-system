@@ -10,6 +10,7 @@ from app.models.setting import SystemSetting
 from app.core.config import settings
 from app.services.rules_engine import validate_checkout_rules
 from app.services.audit_service import log_audit_event
+from app.services.event_broadcaster import broadcaster
 
 def get_setting_float(db: Session, key: str, default: float) -> float:
     setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
@@ -125,6 +126,18 @@ def checkout_book(
 
         db.commit()
         db.refresh(transaction)
+
+        # Broadcast SSE event
+        broadcaster.broadcast("circulation_checkout", {
+            "transaction_id": transaction.id,
+            "accession_number": book_item.accession_number,
+            "book_title": book_item.book.title if book_item.book else "Unknown",
+            "member_name": member.full_name,
+            "membership_number": member.membership_number,
+            "due_date": due_date.isoformat(),
+            "eas_bit": False
+        })
+
         return transaction
     except Exception as e:
         db.rollback()
@@ -218,6 +231,18 @@ def checkin_book(
 
         db.commit()
         db.refresh(transaction)
+
+        # Broadcast SSE event
+        broadcaster.broadcast("circulation_checkin", {
+            "transaction_id": transaction.id,
+            "accession_number": book_item.accession_number,
+            "book_title": book_item.book.title if book_item.book else "Unknown",
+            "member_name": member.full_name,
+            "membership_number": member.membership_number,
+            "fine_assessed": fine_amount,
+            "eas_bit": True
+        })
+
         return transaction
     except Exception as e:
         db.rollback()
@@ -275,6 +300,18 @@ def renew_book(
 
         db.commit()
         db.refresh(transaction)
+
+        # Broadcast SSE event
+        broadcaster.broadcast("circulation_renewal", {
+            "transaction_id": transaction.id,
+            "accession_number": book_item.accession_number,
+            "book_title": book_item.book.title if book_item.book else "Unknown",
+            "member_name": member.full_name,
+            "membership_number": member.membership_number,
+            "new_due_date": transaction.due_date.isoformat(),
+            "renewal_count": transaction.renewal_count
+        })
+
         return transaction
     except Exception as e:
         db.rollback()

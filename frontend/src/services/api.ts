@@ -1,7 +1,9 @@
 import {
   AuthResponse, Book, Member, DashboardStats, SystemHealth, VirtualShelfItem,
   CirculationTransaction, DueDateEnquiryResult, Fine, RfidTag, RfidTagHistory,
-  StaffScanResult, SmartCardTapResult
+  StaffScanResult, SmartCardTapResult,
+  InventorySession, InventorySessionDetail, BulkInventoryScanResult,
+  GateEvent, GateStats, NotificationRecord, MigrationBatch, MigrationValidationReport
 } from '../types';
 
 const BASE_URL = 'http://127.0.0.1:8000/api';
@@ -256,4 +258,122 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ raw_frame }),
     }),
+
+  // Inventory & Stock Verification (Batch 3)
+  createInventorySession: (data: { session_name: string; target_shelf: string }) =>
+    request<InventorySession>('/inventory/sessions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getInventorySessions: (params: { skip?: number; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.skip !== undefined) query.append('skip', params.skip.toString());
+    if (params.limit !== undefined) query.append('limit', params.limit.toString());
+    return request<{ items: InventorySession[]; total: number; skip: number; limit: number }>(
+      `/inventory/sessions?${query.toString()}`
+    );
+  },
+
+  getInventorySession: (id: number) =>
+    request<InventorySessionDetail>(`/inventory/sessions/${id}`),
+
+  scanInventoryItems: (sessionId: number, data: { tag_uids: string[]; detected_shelf?: string }) =>
+    request<BulkInventoryScanResult>(`/inventory/sessions/${sessionId}/scan`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  completeInventorySession: (sessionId: number) =>
+    request<InventorySessionDetail>(`/inventory/sessions/${sessionId}/complete`, {
+      method: 'POST',
+    }),
+
+  // RFID Security Gate & CCTV (Batch 3)
+  simulateGatePassage: (data: { reader_id?: string; tag_uids: string[]; is_person_passing?: boolean }) =>
+    request<GateEvent[]>('/gate/simulate-passage', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  recordFootfall: (count: number = 1) =>
+    request<{ status: string; recorded: number; cumulative_footfall: number }>(
+      `/gate/record-footfall?count=${count}`,
+      { method: 'POST' }
+    ),
+
+  getGateEvents: (params: { alarm_only?: boolean; limit?: number; skip?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.alarm_only) query.append('alarm_only', 'true');
+    if (params.limit) query.append('limit', params.limit.toString());
+    if (params.skip) query.append('skip', params.skip.toString());
+    return request<{ items: GateEvent[]; total: number; skip: number; limit: number }>(
+      `/gate/events?${query.toString()}`
+    );
+  },
+
+  getGateStats: () => request<GateStats>('/gate/stats'),
+
+  // Notifications Queue (Batch 3)
+  getNotifications: (params: { status?: string; channel?: string; limit?: number; skip?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.status) query.append('status', params.status);
+    if (params.channel) query.append('channel', params.channel);
+    if (params.limit) query.append('limit', params.limit.toString());
+    if (params.skip) query.append('skip', params.skip.toString());
+    return request<NotificationRecord[]>(`/notifications?${query.toString()}`);
+  },
+
+  sendTestNotification: (data: { channel?: string; recipient: string; subject: string; body: string }) =>
+    request<NotificationRecord>('/notifications/send-test', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Data Migration (20,000 Records & Scoped Rollback) (Batch 3)
+  uploadMigrationCsv: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('access_token');
+    return fetch('http://127.0.0.1:8000/api/migration/upload', {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Upload error: ${res.status}`);
+      }
+      return res.json() as Promise<MigrationBatch>;
+    });
+  },
+
+  generateSyntheticMigration: (recordCount: number = 20000, invalidCount: number = 100) =>
+    request<MigrationBatch>('/migration/generate-synthetic', {
+      method: 'POST',
+      body: JSON.stringify({ record_count: recordCount, invalid_count: invalidCount }),
+    }),
+
+  getMigrationBatches: (params: { skip?: number; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.skip !== undefined) query.append('skip', params.skip.toString());
+    if (params.limit !== undefined) query.append('limit', params.limit.toString());
+    return request<MigrationBatch[]>(`/migration/batches?${query.toString()}`);
+  },
+
+  getMigrationReport: (batchId: number) =>
+    request<MigrationValidationReport>(`/migration/batches/${batchId}/report`),
+
+  executeMigration: (batchId: number) =>
+    request<MigrationBatch>(`/migration/batches/${batchId}/execute`, {
+      method: 'POST',
+    }),
+
+  rollbackMigration: (batchId: number) =>
+    request<{ batch_id: number; batch_number: string; status: string; deleted_books_count: number; message: string }>(
+      `/migration/batches/${batchId}/rollback`,
+      { method: 'POST' }
+    ),
 };

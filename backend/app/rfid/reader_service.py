@@ -5,6 +5,7 @@ from app.models.rfid import RfidTag
 from app.models.catalog import BookItem
 from app.rfid.deduplication import deduplicator
 from app.schemas.rfid import StaffScanItem, StaffScanResult
+from app.services.event_broadcaster import broadcaster
 
 def simulate_staff_pad_scan(
     db: Session,
@@ -55,7 +56,7 @@ def simulate_staff_pad_scan(
 
     db.commit()
 
-    return StaffScanResult(
+    result = StaffScanResult(
         reader_id=reader_id,
         timestamp=now,
         total_detected=len(items) + len(unknown_tags),
@@ -63,3 +64,13 @@ def simulate_staff_pad_scan(
         unknown_tags=unknown_tags,
         suppressed_duplicates=suppressed_count
     )
+
+    if items or unknown_tags:
+        broadcaster.broadcast("rfid_staff_scan", {
+            "reader_id": reader_id,
+            "detected_count": len(items) + len(unknown_tags),
+            "suppressed_duplicates": suppressed_count,
+            "item_accessions": [it.accession_number for it in items]
+        })
+
+    return result

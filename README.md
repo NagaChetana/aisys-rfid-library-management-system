@@ -1,7 +1,7 @@
 # RFID-Enabled Intelligent Library Management System
 **SOP Compliance:** AISYS Candidate Software Development SOP (Docs: `docs/AISYS_Assignment.pdf`)  
 **Target Evaluation Date:** November 10, 2026  
-**Implementation Progress:** Batch 1 Completed (Scaffold, Database WAL, Auth/RBAC, Catalog, Copies, Members, Dashboard)
+**Implementation Progress:** Batch 1, Batch 2 & Batch 3 Completed (30/30 Automated Tests Passing)
 
 ---
 
@@ -77,22 +77,15 @@ Frontend UI will be accessible at: `http://localhost:5173`
 
 ## 5. Automated Test Suite
 
-Run the Batch 1 core automated test suite:
+Run the full automated test suite (Batch 1 + Batch 2 + Batch 3):
 ```bash
 cd /Users/nagachetanamallipeddi/.gemini/antigravity/scratch/rfid-lms
-PYTHONPATH=backend ./venv/bin/pytest backend/tests/test_batch1_core.py -v
+PYTHONPATH=backend ./venv/bin/pytest backend/tests/ -v
 ```
-All 10 tests verify:
-- Health and diagnostics endpoints (`/api/admin/health`)
-- Password login and JWT issuance
-- Smart-card tap authentication (AC07)
-- Full-text search and catalog filtering
-- Multi-copy accession generation with unique barcodes
-- Adding physical copies to existing titles
-- Virtual bookshelf grouping
-- Member registration, card assignment, and administrative blocking
-- Database duplicate constraint rejection
-- Dashboard statistical aggregations
+All 30 automated tests pass in ~12 seconds:
+- **Batch 1 (10 tests):** System health, diagnostics, password auth, smart-card tap login, full-text catalog search, multi-copy generation, virtual bookshelf, member card binding, duplicate rejection, dashboard aggregations.
+- **Batch 2 (12 tests):** Checkout/renewal/checkin lifecycle, atomic transactions, reference-only restriction, blocked patron restriction, fine cap ($15 limit) rule, copy availability, RFID tag assignment, re-tagging with history audit, sliding-window deduplication (3000ms), smart card tap simulator, NCIP 2.0 mock adapter, 3M SIP2 socket protocol adapter.
+- **Batch 3 (8 tests):** Handheld shelf inventory session lifecycle, bulk scanning, misplaced item detection, duplicate scan suppression, missing book reconciliation, security gate unauthorized removal alarms, EAS security bit states, dynamic CCTV mock snapshots, footfall counting, Server-Sent Events (SSE) broadcasting, notification queue and mock email delivery, failure handling, CSV format validation, 20,000-record synthetic staging, atomic execution, and strictly scoped rollback preserving pre-existing records.
 
 ---
 
@@ -100,7 +93,7 @@ All 10 tests verify:
 
 | Batch | Scope & Modules | Status |
 | :--- | :--- | :---: |
-| **BATCH 1** | Scaffold, WAL DB, Auth/RBAC, Catalog, Copies, Members, Dashboard | **COMPLETED & VERIFIED** |
-| **BATCH 2** | Circulation Desk, Fine Rules, RFID Tagging, Reader Simulator, NCIP/SIP2 Mocks | **NEXT IN LINE** |
-| **BATCH 3** | Shelf Inventory (Audio), Security Gate & CCTV, SSE Push, 20k Migration & Rollback | Planned |
-| **BATCH 4** | Automated Test Suite (AC01–AC10), Backup/Restore, Offline Packaging, D1–D9 Docs | Planned |
+| **BATCH 1** | Scaffold, WAL DB, Auth/RBAC, Catalog, Copies, Members, Dashboard | **COMPLETED & VERIFIED** (10/10 tests pass) |
+| **BATCH 2** | Circulation Desk, Fine Rules, RFID Tagging, Reader Simulator, NCIP/SIP2 Mocks | **COMPLETED & VERIFIED** (12/12 tests pass) |
+| **BATCH 3** | Shelf Inventory (Audio), Security Gate & CCTV, SSE Push, 20k Migration & Rollback | **COMPLETED & VERIFIED** (8/8 tests pass) |
+| **BATCH 4** | Comprehensive AC01–AC10 Suite, Backup/Restore Verification, Offline Packaging, D1–D9 Deliverables | **NEXT IN LINE** |
