@@ -68,11 +68,11 @@ def test_book_catalog_list_and_search():
     assert len(data["items"]) >= 5
 
     # Full text search by title
-    search_res = client.get("/api/books?q=Artificial Intelligence&limit=100")
+    search_res = client.get("/api/books?q=Modern Approach")
     assert search_res.status_code == 200
     search_data = search_res.json()
     assert search_data["total"] >= 1
-    assert any("Artificial Intelligence" in item["title"] for item in search_data["items"])
+    assert any("Artificial Intelligence: A Modern Approach" in item["title"] for item in search_data["items"])
 
     # Search by ISBN
     isbn_res = client.get("/api/books?q=978-0134494166")

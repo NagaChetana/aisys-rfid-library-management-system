@@ -38,12 +38,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Database (keep schema and seeds, exclude generated instance db)
-data/*.db
-data/*.db-wal
-data/*.db-shm
-data/backups/
-data/cctv_captures/
+# Database, Backups, Updates, CCTV & Runtime Data
+data/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
 
 # IDE
 .vscode/
