@@ -15,9 +15,9 @@ import {
   FileText,
   Settings,
   LogOut,
-  CreditCard,
   Wifi,
-  HardDrive
+  HardDrive,
+  ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -30,7 +30,7 @@ interface AppLayoutProps {
 }
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab, children }) => {
-  const { user, logout, smartCardLogin } = useAuth();
+  const { user, logout } = useAuth();
   const [health, setHealth] = useState<SystemHealth | null>(null);
 
   useEffect(() => {
@@ -47,128 +47,122 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
     return () => clearInterval(interval);
   }, []);
 
-  const navItems = [
-    { section: 'Core Library' },
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, batch: 'B1' },
-    { id: 'catalog', label: 'Book Catalog & Copies', icon: BookOpen, batch: 'B1' },
-    { id: 'bookshelf', label: 'Virtual Bookshelf (OPAC)', icon: Library, batch: 'B1' },
-    { id: 'members', label: 'Members & Cards', icon: Users, batch: 'B1' },
+  const userRole = user?.role_name || 'STAFF';
 
-    { section: 'RFID & Interoperability' },
-    { id: 'circulation', label: 'Circulation Desk', icon: Repeat, batch: 'B2', disabledNote: 'Batch 2' },
-    { id: 'rfid-mgmt', label: 'RFID Tag Management', icon: Radio, batch: 'B2', disabledNote: 'Batch 2' },
-    { id: 'simulator', label: 'Hardware Reader Simulator', icon: Cpu, batch: 'B2', disabledNote: 'Batch 2' },
+  const allNavItems = [
+    { section: 'Core Library' },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'catalog', label: 'Book Catalog & Copies', icon: BookOpen },
+    { id: 'bookshelf', label: 'Virtual Bookshelf (OPAC)', icon: Library },
+    { id: 'acquisitions', label: 'Acquisitions & Serials', icon: ShoppingBag, roles: ['ADMIN', 'LIBRARIAN'] },
+    { id: 'members', label: 'Members & Cards', icon: Users },
+
+    { section: 'RFID & Circulation' },
+    { id: 'circulation', label: 'Circulation Desk', icon: Repeat },
+    { id: 'rfid-mgmt', label: 'RFID Tag Management', icon: Radio, roles: ['ADMIN', 'LIBRARIAN'] },
+    { id: 'simulator', label: 'Hardware Reader Simulator', icon: Cpu, roles: ['ADMIN', 'LIBRARIAN'] },
 
     { section: 'Surveillance & Operations' },
-    { id: 'inventory', label: 'Shelf Stock Inventory', icon: Layers, batch: 'B3', disabledNote: 'Batch 3' },
-    { id: 'security-gate', label: 'Security Gate & CCTV', icon: ShieldAlert, batch: 'B3', disabledNote: 'Batch 3' },
-    { id: 'reports', label: 'Reports & Analytics', icon: BarChart3, batch: 'B3', disabledNote: 'Batch 3' },
-    { id: 'migration', label: 'Data Migration (20k)', icon: Database, batch: 'B3', disabledNote: 'Batch 3' },
+    { id: 'inventory', label: 'Shelf Stock Inventory', icon: Layers, roles: ['ADMIN', 'LIBRARIAN'] },
+    { id: 'security-gate', label: 'Security Gate & CCTV', icon: ShieldAlert, roles: ['ADMIN', 'LIBRARIAN'] },
+    { id: 'reports', label: 'Reports & Analytics', icon: BarChart3, roles: ['ADMIN', 'LIBRARIAN'] },
+    { id: 'migration', label: 'Data Migration (20k)', icon: Database, roles: ['ADMIN', 'LIBRARIAN'] },
 
     { section: 'Administration' },
-    { id: 'users', label: 'User & Role Access', icon: UserCheck, batch: 'B1' },
-    { id: 'audit', label: 'System Audit Logs', icon: FileText, batch: 'B1' },
-    { id: 'settings', label: 'System Settings', icon: Settings, batch: 'B1' },
+    { id: 'users', label: 'User & Role Access', icon: UserCheck, roles: ['ADMIN'] },
+    { id: 'audit', label: 'System Audit Logs', icon: FileText, roles: ['ADMIN'] },
+    { id: 'settings', label: 'System Settings', icon: Settings, roles: ['ADMIN'] },
   ];
 
-  const quickStaffCards = [
-    { name: 'Admin', uid: 'SC-ADMIN-001' },
-    { name: 'Librarian', uid: 'SC-LIB-002' },
-    { name: 'Staff', uid: 'SC-STAFF-003' },
-  ];
+  // Filter items and sections strictly based on authenticated role
+  const navItems = React.useMemo(() => {
+    const result: typeof allNavItems = [];
+    let currentSection: (typeof allNavItems)[0] | null = null;
+    let sectionItems: typeof allNavItems = [];
+
+    for (const item of allNavItems) {
+      if (item.section) {
+        if (currentSection && sectionItems.length > 0) {
+          result.push(currentSection);
+          result.push(...sectionItems);
+        }
+        currentSection = item;
+        sectionItems = [];
+      } else {
+        const isAllowed = !item.roles || item.roles.includes(userRole);
+        if (isAllowed) {
+          sectionItems.push(item);
+        }
+      }
+    }
+    if (currentSection && sectionItems.length > 0) {
+      result.push(currentSection);
+      result.push(...sectionItems);
+    }
+    return result;
+  }, [userRole]);
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between select-none">
-        <div>
-          {/* Logo Brand */}
-          <div className="p-4 border-b border-slate-800 flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-              <Radio className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <h1 className="font-bold text-sm tracking-wide text-white leading-tight">AISYS RFID LMS</h1>
-              <p className="text-[10px] text-emerald-400 font-medium">SOP Compliant • v1.0.0</p>
-            </div>
+      <aside className="w-64 xl:w-72 bg-slate-900 border-r border-slate-800 flex flex-col h-full select-none flex-shrink-0">
+        {/* Logo Brand */}
+        <div className="p-4 border-b border-slate-800 flex items-center space-x-3 flex-shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
+            <Radio className="w-5 h-5 animate-pulse" />
           </div>
-
-          {/* Navigation Menu */}
-          <nav className="p-3 space-y-1 overflow-y-auto max-h-[calc(100vh-210px)] text-sm">
-            {navItems.map((item, idx) => {
-              if (item.section) {
-                return (
-                  <div key={idx} className="pt-3 pb-1 px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    {item.section}
-                  </div>
-                );
-              }
-              const Icon = item.icon!;
-              const isActive = currentTab === item.id;
-              const isB1 = item.batch === 'B1';
-
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setCurrentTab(item.id!)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-md transition-colors text-left ${
-                    isActive
-                      ? 'bg-emerald-600 text-white font-medium shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2.5">
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                    <span className="truncate">{item.label}</span>
-                  </div>
-                  {!isB1 && (
-                    <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-800 text-amber-400 border border-amber-500/20">
-                      {item.disabledNote}
-                    </span>
-                  )}
-                  {isB1 && (
-                    <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-500/20">
-                      Ready
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
+          <div className="min-w-0">
+            <h1 className="font-bold text-sm tracking-wide text-white leading-tight truncate">AISYS RFID LMS</h1>
+            <p className="text-[10px] text-emerald-400 font-medium">SOP Compliant • v1.0.0</p>
+          </div>
         </div>
 
-        {/* Footer info & Smart card quick tap */}
-        <div className="p-3 border-t border-slate-800 bg-slate-900/50 space-y-2">
-          <div className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider flex items-center justify-between">
-            <span className="flex items-center space-x-1">
-              <CreditCard className="w-3 h-3 text-cyan-400" />
-              <span>Simulate Badge Tap</span>
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-1">
-            {quickStaffCards.map((sc) => (
+        {/* Navigation Menu (Independently scrollable) */}
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto text-sm scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+          {navItems.map((item, idx) => {
+            if (item.section) {
+              return (
+                <div key={idx} className="pt-4 pb-1 px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {item.section}
+                </div>
+              );
+            }
+            const Icon = item.icon!;
+            const isActive = currentTab === item.id;
+
+            return (
               <button
-                key={sc.uid}
-                onClick={() => smartCardLogin(sc.uid)}
-                title={`Switch to ${sc.name} (${sc.uid})`}
-                className={`text-[10px] py-1 px-1 rounded text-center border font-mono transition-all ${
-                  user?.smart_card_uid === sc.uid
-                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500'
-                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'
+                key={item.id}
+                onClick={() => setCurrentTab(item.id!)}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-all text-left group ${
+                  isActive
+                    ? 'bg-emerald-600 text-white font-medium shadow-sm shadow-emerald-950/50'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
                 }`}
               >
-                {sc.name}
+                <Icon className={`w-4 h-4 flex-shrink-0 transition-colors ${
+                  isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
+                <span className="truncate text-xs tracking-tight">{item.label}</span>
               </button>
-            ))}
-          </div>
+            );
+          })}
+        </nav>
 
-          <div className="pt-1 flex items-center justify-between text-[11px] text-slate-400">
+        {/* Sidebar Footer — System Status */}
+        <div className="p-3 border-t border-slate-800 bg-slate-900/80 flex-shrink-0">
+          <div className="flex items-center justify-between text-[11px] text-slate-400">
             <span className="flex items-center space-x-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
               <span>SQLite WAL Online</span>
             </span>
             <span className="font-mono text-[10px] text-slate-400">Air-gapped</span>
           </div>
+          {health && (
+            <div className="mt-1.5 text-[10px] text-slate-500 font-mono">
+              DB: {health.database.file_size_kb} KB
+            </div>
+          )}
         </div>
       </aside>
 

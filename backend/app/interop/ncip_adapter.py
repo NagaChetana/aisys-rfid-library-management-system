@@ -14,6 +14,14 @@ class NCIP2Adapter:
     @staticmethod
     def process_message(db: Session, message_data: Dict[str, Any]) -> Dict[str, Any]:
         action = message_data.get("action")
+        if not action and "NCIPMessage" in message_data:
+            inner = message_data["NCIPMessage"]
+            for possible in ["LookupUser", "CheckoutItem", "CheckinItem", "RenewItem"]:
+                if possible in inner:
+                    action = possible
+                    message_data = {**inner[possible], "action": possible}
+                    break
+
         timestamp = datetime.now(timezone.utc).isoformat()
 
         if action == "LookupUser":
@@ -38,6 +46,11 @@ class NCIP2Adapter:
     @staticmethod
     def _lookup_user(db: Session, data: Dict[str, Any], timestamp: str) -> Dict[str, Any]:
         user_id = data.get("UserId")
+        if isinstance(user_id, dict):
+            user_id = user_id.get("UserIdentifierValue")
+        if user_id is not None:
+            user_id = str(user_id).strip()
+
         member = circulation_service.resolve_member(db, membership_number=user_id, smart_card_uid=user_id)
         if not member:
             return {
@@ -67,7 +80,16 @@ class NCIP2Adapter:
     @staticmethod
     def _checkout_item(db: Session, data: Dict[str, Any], timestamp: str) -> Dict[str, Any]:
         user_id = data.get("UserId")
+        if isinstance(user_id, dict):
+            user_id = user_id.get("UserIdentifierValue")
+        if user_id is not None:
+            user_id = str(user_id).strip()
+
         item_id = data.get("ItemId")
+        if isinstance(item_id, dict):
+            item_id = item_id.get("ItemIdentifierValue")
+        if item_id is not None:
+            item_id = str(item_id).strip()
 
         member = circulation_service.resolve_member(db, membership_number=user_id, smart_card_uid=user_id)
         if not member:
@@ -124,6 +146,11 @@ class NCIP2Adapter:
     @staticmethod
     def _checkin_item(db: Session, data: Dict[str, Any], timestamp: str) -> Dict[str, Any]:
         item_id = data.get("ItemId")
+        if isinstance(item_id, dict):
+            item_id = item_id.get("ItemIdentifierValue")
+        if item_id is not None:
+            item_id = str(item_id).strip()
+
         book_item = circulation_service.resolve_book_item(db, accession_number=item_id, barcode=item_id, tag_uid=item_id)
         if not book_item:
             return {
@@ -166,6 +193,11 @@ class NCIP2Adapter:
     @staticmethod
     def _renew_item(db: Session, data: Dict[str, Any], timestamp: str) -> Dict[str, Any]:
         item_id = data.get("ItemId")
+        if isinstance(item_id, dict):
+            item_id = item_id.get("ItemIdentifierValue")
+        if item_id is not None:
+            item_id = str(item_id).strip()
+
         book_item = circulation_service.resolve_book_item(db, accession_number=item_id, barcode=item_id, tag_uid=item_id)
         if not book_item:
             return {

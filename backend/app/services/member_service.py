@@ -8,7 +8,11 @@ from app.services.audit_service import log_audit_event
 
 def generate_membership_number(db: Session) -> str:
     count = db.query(Member).count() + 1
-    return f"MEM-{count:05d}"
+    mem_num = f"MEM-{count:05d}"
+    while db.query(Member).filter(Member.membership_number == mem_num).first():
+        count += 1
+        mem_num = f"MEM-{count:05d}"
+    return mem_num
 
 def get_members(
     db: Session,

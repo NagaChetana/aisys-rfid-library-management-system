@@ -50,15 +50,65 @@ def resolve_book_item(
     barcode: Optional[str] = None,
     tag_uid: Optional[str] = None
 ) -> Optional[BookItem]:
-    if accession_number:
-        return db.query(BookItem).filter(BookItem.accession_number == accession_number.strip()).first()
-    if barcode:
-        return db.query(BookItem).filter(BookItem.barcode == barcode.strip()).first()
-    if tag_uid:
+    if accession_number and isinstance(accession_number, str):
+        item = db.query(BookItem).filter(BookItem.accession_number == accession_number.strip()).first()
+        if item:
+            return item
+    if barcode and isinstance(barcode, str):
+        item = db.query(BookItem).filter(BookItem.barcode == barcode.strip()).first()
+        if item:
+            return item
+    if tag_uid and isinstance(tag_uid, str):
         tag = db.query(RfidTag).filter(RfidTag.tag_uid == tag_uid.strip().upper()).first()
         if tag and tag.book_item_id:
             return db.query(BookItem).filter(BookItem.id == tag.book_item_id).first()
     return None
+
+def reconcile_member_fine_balances(db: Session):
+    """
+    Ensures fine ledger records (Fine model) and member fine balances stay 100% aligned.
+    If a member has fine_balance > 0 but unledgered amounts, creates an assessed fine ledger record
+    without altering or fabricating balances or resetting data (FR04, FR11).
+    """
+    from sqlalchemy import func
+    members_with_fines = db.query(Member).filter(Member.fine_balance > 0).all()
+    created = False
+    for m in members_with_fines:
+        unpaid_ledger_sum = db.query(
+            func.coalesce(func.sum(Fine.amount - Fine.paid_amount), 0.0)
+        ).filter(
+            Fine.member_id == m.id,
+            Fine.status.in_(["unpaid", "partially_paid"])
+        ).scalar() or 0.0
+
+        unledgered = round(m.fine_balance - unpaid_ledger_sum, 2)
+        if unledgered > 0:
+            fine = Fine(
+                member_id=m.id,
+                circulation_transaction_id=None,
+                amount=unledgered,
+                paid_amount=0.0,
+                status="unpaid",
+                reason=f"Assessed overdue fine balance - {m.membership_number}",
+                assessed_date=datetime.now(timezone.utc)
+            )
+            db.add(fine)
+            log_audit_event(
+                db,
+                action="FINE_LEDGER_RECONCILED",
+                resource_type="fine",
+                resource_id=m.membership_number,
+                actor_user_id=None,
+                details={
+                    "member_id": m.id,
+                    "membership_number": m.membership_number,
+                    "reconciled_amount": unledgered,
+                    "total_fine_balance": m.fine_balance
+                }
+            )
+            created = True
+    if created:
+        db.commit()
 
 def checkout_book(
     db: Session,
@@ -126,6 +176,10 @@ def checkout_book(
 
         db.commit()
         db.refresh(transaction)
+        if transaction.due_date.tzinfo is None:
+            transaction.due_date = transaction.due_date.replace(tzinfo=timezone.utc)
+        if transaction.checkout_date.tzinfo is None:
+            transaction.checkout_date = transaction.checkout_date.replace(tzinfo=timezone.utc)
 
         # Broadcast SSE event
         broadcaster.broadcast("circulation_checkout", {
@@ -231,6 +285,10 @@ def checkin_book(
 
         db.commit()
         db.refresh(transaction)
+        if transaction.due_date.tzinfo is None:
+            transaction.due_date = transaction.due_date.replace(tzinfo=timezone.utc)
+        if transaction.checkout_date.tzinfo is None:
+            transaction.checkout_date = transaction.checkout_date.replace(tzinfo=timezone.utc)
 
         # Broadcast SSE event
         broadcaster.broadcast("circulation_checkin", {
@@ -281,6 +339,9 @@ def renew_book(
     days = additional_days or get_setting_int(db, "loan_period_days", settings.DEFAULT_LOAN_PERIOD_DAYS)
     
     try:
+        if transaction.due_date.tzinfo is None:
+            transaction.due_date = transaction.due_date.replace(tzinfo=timezone.utc)
+
         transaction.due_date = transaction.due_date + timedelta(days=days)
         transaction.renewal_count += 1
         transaction.protocol = protocol
@@ -300,6 +361,10 @@ def renew_book(
 
         db.commit()
         db.refresh(transaction)
+        if transaction.due_date.tzinfo is None:
+            transaction.due_date = transaction.due_date.replace(tzinfo=timezone.utc)
+        if transaction.checkout_date.tzinfo is None:
+            transaction.checkout_date = transaction.checkout_date.replace(tzinfo=timezone.utc)
 
         # Broadcast SSE event
         broadcaster.broadcast("circulation_renewal", {

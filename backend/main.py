@@ -14,7 +14,7 @@ from app.core.database import engine, Base
 import app.models  # Ensure all SQLAlchemy models are registered
 from app.api import (
     auth, books, members, admin, reports, circulation, rfid, interop,
-    inventory, gate, events, notifications, migration
+    inventory, gate, events, notifications, migration, acquisitions
 )
 
 @asynccontextmanager
@@ -53,6 +53,7 @@ app.include_router(gate.router, prefix=settings.API_V1_STR)
 app.include_router(events.router, prefix=settings.API_V1_STR)
 app.include_router(notifications.router, prefix=settings.API_V1_STR)
 app.include_router(migration.router, prefix=settings.API_V1_STR)
+app.include_router(acquisitions.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():

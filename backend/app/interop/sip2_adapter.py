@@ -13,10 +13,27 @@ class SIP2Adapter:
 
     @staticmethod
     def parse_fields(raw_msg: str) -> Dict[str, str]:
-        """Parses variable-length fields delimited by '|'."""
+        """Parses variable-length fields delimited by '|', including embedded codes in the first segment."""
+        import re
         fields = {}
         parts = raw_msg.split("|")
-        for part in parts:
+        # Check first part for variable fields (e.g. AO...)
+        first_part = parts[0]
+        known_tags = ["AO", "AA", "AB", "AC", "AD", "AF", "AG", "AH", "AJ", "AP", "AQ", "AY", "AZ", "BO", "BV", "BW", "CH", "NB"]
+        for tag in known_tags:
+            idx = first_part.find(tag)
+            if idx >= 2:  # Tag cannot be the initial 2-char command
+                fields[tag] = first_part[idx + 2:]
+                break
+
+        if not any(t in fields for t in ["AO", "AA", "AB"]):
+            match = re.search(r'([A-Z]{2})([^|]*)$', first_part)
+            if match:
+                code = match.group(1)
+                if not code.isdigit() and code not in ["YN", "NY", "NN", "YY"]:
+                    fields[code] = match.group(2)
+
+        for part in parts[1:]:
             if len(part) >= 2:
                 code = part[:2]
                 val = part[2:]
@@ -119,20 +136,48 @@ class SIP2Adapter:
         # Message 29: Renew Request -> 30: Renew Response
         # -------------------------------------------------------------
         elif command == "29":
-            item_id = fields.get("AB", "")
-            patron_id = fields.get("AA", "")
-            institution = fields.get("AO", "AISYS-LIB")
+            item_id = fields.get("AB", "").strip()
+            patron_id = fields.get("AA", "").strip()
+            institution = fields.get("AO", "AISYS-LIB").strip()
             book_item = circulation_service.resolve_book_item(db, accession_number=item_id, barcode=item_id, tag_uid=item_id)
 
             if not book_item:
                 resp = f"300NNN{now_str}AO{institution}|AA{patron_id}|AB{item_id}|AFItem Not Found|"
                 return resp, {"command": "30", "ok": False, "reason": "Item Not Found"}
 
+            # Check active transaction and patron match
+            from app.models.circulation import CirculationTransaction
+            from sqlalchemy import desc
+            active_tx = db.query(CirculationTransaction).filter(
+                CirculationTransaction.book_item_id == book_item.id,
+                CirculationTransaction.transaction_type == "checkout",
+                CirculationTransaction.return_date.is_(None)
+            ).order_by(desc(CirculationTransaction.id)).first()
+
+            if not active_tx:
+                resp = f"300NNN{now_str}AO{institution}|AA{patron_id}|AB{book_item.accession_number}|AFNo active loan found for this item|"
+                return resp, {"command": "30", "ok": False, "reason": "No active loan found for this item"}
+
+            if patron_id and active_tx.member.membership_number != patron_id and active_tx.member.smart_card_uid != patron_id:
+                resp = f"300NNN{now_str}AO{institution}|AA{patron_id}|AB{book_item.accession_number}|AFPatron does not hold this loan|"
+                return resp, {"command": "30", "ok": False, "reason": f"Patron {patron_id} does not hold active loan for {book_item.accession_number}"}
+
             try:
                 tx = circulation_service.renew_book(db, book_item=book_item, protocol="SIP2")
                 due_date_str = tx.due_date.strftime("%Y%m%d    %H%M%S")
-                resp = f"301YYY{now_str}AO{institution}|AA{patron_id}|AB{book_item.accession_number}|AH{due_date_str}|AFRenewal Successful|"
-                return resp, {"command": "30", "ok": True, "accession": book_item.accession_number, "new_due_date": due_date_str}
+                title = book_item.book.title if book_item.book else "Unknown"
+                member_num = tx.member.membership_number if tx.member else patron_id
+                resp = f"301YYY{now_str}AO{institution}|AA{member_num}|AB{book_item.accession_number}|AJ{title}|AH{due_date_str}|AFRenewal Successful|"
+                return resp, {
+                    "command": "30",
+                    "ok": True,
+                    "accession": book_item.accession_number,
+                    "member": member_num,
+                    "due_date": tx.due_date.isoformat(),
+                    "due_date_formatted": tx.due_date.strftime("%d/%m/%Y"),
+                    "new_due_date": due_date_str,
+                    "renewal_count": tx.renewal_count
+                }
             except ValueError as e:
                 resp = f"300NNN{now_str}AO{institution}|AA{patron_id}|AB{book_item.accession_number}|AF{str(e)}|"
                 return resp, {"command": "30", "ok": False, "reason": str(e)}

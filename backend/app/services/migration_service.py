@@ -190,6 +190,12 @@ def execute_migration(db: Session, batch_id: int) -> MigrationBatch:
 
     # Max IDs for auto-increment generation
     max_acc = db.query(func.max(BookItem.id)).scalar() or 0
+    highest_acc = db.query(func.max(BookItem.accession_number)).filter(BookItem.accession_number.like("ACC-%")).scalar()
+    if highest_acc and highest_acc.startswith("ACC-"):
+        try:
+            max_acc = max(max_acc, int(highest_acc.replace("ACC-", "")))
+        except ValueError:
+            pass
 
     now = datetime.now(timezone.utc)
     migrated_count = 0

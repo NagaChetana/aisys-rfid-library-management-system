@@ -28,14 +28,38 @@ def get_or_create_category(db: Session, category_code: str, category_name: Optio
     return category
 
 def generate_accession_number(db: Session, offset: int = 0) -> str:
+    pending_nums = {obj.accession_number for obj in db.new if isinstance(obj, BookItem) and obj.accession_number}
     max_id = db.query(func.max(BookItem.id)).scalar() or 0
+    highest_acc = db.query(func.max(BookItem.accession_number)).filter(BookItem.accession_number.like("ACC-%")).scalar()
+    if highest_acc and highest_acc.startswith("ACC-"):
+        try:
+            max_id = max(max_id, int(highest_acc.replace("ACC-", "")))
+        except ValueError:
+            pass
+
     next_val = max_id + 1 + offset
-    return f"ACC-{next_val:06d}"
+    candidate = f"ACC-{next_val:06d}"
+    while candidate in pending_nums or db.query(BookItem).filter(BookItem.accession_number == candidate).first() is not None:
+        next_val += 1
+        candidate = f"ACC-{next_val:06d}"
+    return candidate
 
 def generate_barcode(db: Session, offset: int = 0) -> str:
+    pending_barcodes = {obj.barcode for obj in db.new if isinstance(obj, BookItem) and obj.barcode}
     max_id = db.query(func.max(BookItem.id)).scalar() or 0
+    highest_bc = db.query(func.max(BookItem.barcode)).filter(BookItem.barcode.like("BC%")).scalar()
+    if highest_bc and highest_bc.startswith("BC"):
+        try:
+            max_id = max(max_id, int(highest_bc.replace("BC", "")))
+        except ValueError:
+            pass
+
     next_val = max_id + 1 + offset
-    return f"BC{next_val:08d}"
+    candidate = f"BC{next_val:08d}"
+    while candidate in pending_barcodes or db.query(BookItem).filter(BookItem.barcode == candidate).first() is not None:
+        next_val += 1
+        candidate = f"BC{next_val:08d}"
+    return candidate
 
 def get_books(
     db: Session,
@@ -51,7 +75,7 @@ def get_books(
     
     if search:
         search_term = f"%{search.strip()}%"
-        query = query.join(Author).join(Category).filter(
+        query = query.outerjoin(Author).outerjoin(Category).filter(
             or_(
                 Book.title.ilike(search_term),
                 Book.isbn.ilike(search_term),
@@ -216,7 +240,8 @@ def get_virtual_bookshelf(db: Session, category_code: Optional[str] = None) -> L
     shelf_items = []
     for b in books:
         total_copies = len(b.items)
-        available_copies = sum(1 for it in b.items if it.status == "available")
+        # Only non-reference loanable physical copies count as available for checkout (OPAC-05, AC04)
+        available_copies = sum(1 for it in b.items if it.status == "available" and not it.is_reference_only)
         shelf_items.append(
             VirtualShelfItem(
                 id=b.id,

@@ -15,7 +15,8 @@ import {
   BookOpen,
   MapPin,
   Clock,
-  Sparkles
+  Sparkles,
+  ChevronDown
 } from 'lucide-react';
 import { api } from '../services/api';
 import { InventorySession, InventorySessionDetail, InventoryScanItem, InventoryMissingItem } from '../types';
@@ -42,7 +43,12 @@ export const Inventory: React.FC = () => {
   const playScanBeep = (type: 'correct' | 'misplaced' | 'unknown') => {
     if (!soundEnabled) return;
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.connect(gain);
@@ -214,17 +220,20 @@ export const Inventory: React.FC = () => {
 
               <div>
                 <label className="block text-slate-300 font-medium mb-1">Target Shelf Location *</label>
-                <select
-                  value={targetShelf}
-                  onChange={(e) => setTargetShelf(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
-                >
-                  <option value="CS-SHELF-01">CS-SHELF-01 (Computer Science)</option>
-                  <option value="CS-SHELF-02">CS-SHELF-02 (AI & Data Systems)</option>
-                  <option value="MATH-SHELF-01">MATH-SHELF-01 (Mathematics)</option>
-                  <option value="PHYS-SHELF-01">PHYS-SHELF-01 (Physics)</option>
-                  <option value="REF-SHELF-01">REF-SHELF-01 (Reference Restricted)</option>
-                </select>
+                <div className="relative">
+                  <select
+                    value={targetShelf}
+                    onChange={(e) => setTargetShelf(e.target.value)}
+                    className="w-full appearance-none bg-slate-950 border border-slate-800 rounded-lg pl-3 pr-10 py-2 text-white focus:outline-none focus:border-cyan-500 cursor-pointer text-xs sm:text-sm"
+                  >
+                    <option value="CS-SHELF-01">CS-SHELF-01 (Computer Science)</option>
+                    <option value="CS-SHELF-02">CS-SHELF-02 (AI & Data Systems)</option>
+                    <option value="MATH-SHELF-01">MATH-SHELF-01 (Mathematics)</option>
+                    <option value="PHYS-SHELF-01">PHYS-SHELF-01 (Physics)</option>
+                    <option value="REF-SHELF-01">REF-SHELF-01 (Reference Restricted)</option>
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
               </div>
 
               <button

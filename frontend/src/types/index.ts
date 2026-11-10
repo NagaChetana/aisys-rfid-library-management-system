@@ -175,7 +175,7 @@ export interface Fine {
   circulation_transaction_id?: number;
   amount: number;
   paid_amount: number;
-  status: 'unpaid' | 'paid' | 'waived';
+  status: 'unpaid' | 'partially_paid' | 'paid' | 'waived' | string;
   reason: string;
   assessed_date: string;
   settled_date?: string;
@@ -364,4 +364,169 @@ export interface MigrationValidationReport {
   sample_errors: StagedRowError[];
 }
 
+export interface Supplier {
+  id: number;
+  name: string;
+  contact_person?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  is_active: boolean;
+  created_at: string;
+}
 
+export interface PurchaseOrderItem {
+  id: number;
+  purchase_order_id: number;
+  title: string;
+  author?: string;
+  isbn?: string;
+  quantity: number;
+  unit_price: number;
+  received_quantity: number;
+  created_at: string;
+}
+
+export interface PurchaseOrder {
+  id: number;
+  po_number: string;
+  supplier_id: number;
+  supplier_name?: string;
+  order_date: string;
+  expected_delivery_date?: string;
+  status: string;
+  total_cost: number;
+  notes?: string;
+  items: PurchaseOrderItem[];
+  created_at: string;
+}
+
+export interface SerialIssue {
+  id: number;
+  subscription_id: number;
+  volume: string;
+  issue_number: string;
+  publication_date: string;
+  received_date?: string;
+  status: string;
+  accession_number?: string;
+  created_at: string;
+}
+
+export interface SerialSubscription {
+  id: number;
+  subscription_code: string;
+  title: string;
+  issn?: string;
+  supplier_id?: number;
+  supplier_name?: string;
+  frequency: string;
+  start_date: string;
+  end_date: string;
+  annual_cost: number;
+  status: string;
+  shelf_location: string;
+  issues?: SerialIssue[];
+  created_at: string;
+}
+
+export interface SpineLabelData {
+  accession_number: string;
+  barcode: string;
+  classification: string;
+  author_mark: string;
+  full_call_number: string;
+  title: string;
+  barcode_svg: string;
+  printable_html: string;
+}
+
+export interface ReaderClient {
+  reader_id: string;
+  reader_type: string;
+  label: string;
+  ip_address: string;
+  mac_address: string;
+  firmware_version: string;
+  status: string;
+  last_heartbeat: string;
+  total_scans: number;
+  power_dbm: number;
+}
+
+export interface TagHealthSummary {
+  total_tags: number;
+  active_tags: number;
+  damaged_tags: number;
+  decommissioned_tags: number;
+  eas_armed_count: number;
+  eas_disarmed_count: number;
+  coverage_percentage: number;
+  recently_scanned_count: number;
+  stale_unscanned_count: number;
+  frequency_band: string;
+  rfid_health_grade: string;
+}
+
+export interface SystemSettingItem {
+  key: string;
+  value: string;
+  category: string;
+  description?: string;
+  updated_at?: string;
+}
+
+export interface UserCreateRequest {
+  username: string;
+  email: string;
+  password: string;
+  role_id: number;
+  full_name: string;
+  smart_card_uid?: string;
+}
+
+export interface UserUpdateRequest {
+  full_name?: string;
+  email?: string;
+  role_id?: number;
+  smart_card_uid?: string;
+  password?: string;
+  is_active?: boolean;
+}
+
+export interface DatabaseBackup {
+  filename: string;
+  path: string;
+  size_bytes: number;
+  sha256: string;
+  created_at: string;
+  note?: string;
+  integrity_check?: string;
+  record_counts?: Record<string, number>;
+}
+
+export interface BackupValidationResult {
+  filename: string;
+  is_valid: boolean;
+  sha256_match: boolean;
+  integrity_check: string;
+  calculated_sha256: string;
+  expected_sha256?: string;
+  error?: string;
+}
+
+export interface OfflineVersionInfo {
+  version: string;
+  sop_compliance: string;
+  offline_ready: boolean;
+}
+
+export interface UpdateHistoryItem {
+  id: string;
+  timestamp: string;
+  action: string;
+  from_version?: string;
+  to_version?: string;
+  status: string;
+  details?: any;
+}

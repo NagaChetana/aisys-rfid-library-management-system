@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -35,9 +35,12 @@ export const SecurityGate: React.FC = () => {
 
   // CCTV Modal
   const [selectedCctvUrl, setSelectedCctvUrl] = useState<string | null>(null);
+  const [cctvLoading, setCctvLoading] = useState<boolean>(false);
+  const [cctvError, setCctvError] = useState<boolean>(false);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'events' | 'notifications'>('events');
+  const lastSimulateTimeRef = useRef<number>(0);
 
   const loadData = async () => {
     try {
@@ -96,7 +99,9 @@ export const SecurityGate: React.FC = () => {
 
   // Trigger Gate Passage Simulation
   const handleSimulatePassage = async (tagUidToPass: string) => {
-    if (!tagUidToPass.trim()) return;
+    const now = Date.now();
+    if (isSimulating || !tagUidToPass.trim() || (now - lastSimulateTimeRef.current < 1200)) return;
+    lastSimulateTimeRef.current = now;
     setIsSimulating(true);
 
     try {
@@ -267,11 +272,12 @@ export const SecurityGate: React.FC = () => {
                   {registeredTags.map((t) => (
                     <button
                       key={t.id}
+                      disabled={isSimulating}
                       onClick={() => {
                         setSimTagUid(t.tag_uid);
                         handleSimulatePassage(t.tag_uid);
                       }}
-                      className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-colors ${
+                      className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                         t.eas_bit
                           ? 'bg-rose-950/60 border-rose-500/30 text-rose-300 hover:bg-rose-900/60'
                           : 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/60'
@@ -376,7 +382,11 @@ export const SecurityGate: React.FC = () => {
                     <td className="px-4 py-2.5">
                       {e.cctv_image_url ? (
                         <button
-                          onClick={() => setSelectedCctvUrl(e.cctv_image_url || null)}
+                          onClick={() => {
+                            setSelectedCctvUrl(e.cctv_image_url || null);
+                            setCctvLoading(true);
+                            setCctvError(false);
+                          }}
                           className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded text-[10px] flex items-center gap-1 font-mono"
                         >
                           <Camera className="w-3 h-3 text-cyan-400" /> View Frame
@@ -452,12 +462,30 @@ export const SecurityGate: React.FC = () => {
               Surveillance Camera Still Snapshot (Mock CCTV Feed)
             </h3>
 
-            <div className="bg-slate-950 rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center">
-              <img
-                src={`http://127.0.0.1:8000${selectedCctvUrl}`}
-                alt="Security Gate CCTV Snapshot"
-                className="w-full max-h-96 object-contain"
-              />
+            <div className="bg-slate-950 rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center min-h-[220px] relative">
+              {cctvLoading && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 gap-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-cyan-400" />
+                  <span className="text-xs text-slate-400 font-mono">Loading surveillance frame...</span>
+                </div>
+              )}
+              {cctvError ? (
+                <div className="p-8 text-center text-xs text-rose-400 space-y-1">
+                  <p className="font-semibold">Unable to display CCTV frame.</p>
+                  <p className="text-slate-500 font-mono text-[10px]">The frame reference may be unavailable or expired.</p>
+                </div>
+              ) : (
+                <img
+                  src={selectedCctvUrl}
+                  alt="Security Gate CCTV Snapshot"
+                  onLoad={() => setCctvLoading(false)}
+                  onError={() => {
+                    setCctvLoading(false);
+                    setCctvError(true);
+                  }}
+                  className={`w-full max-h-96 object-contain transition-opacity duration-200 ${cctvLoading ? 'opacity-0' : 'opacity-100'}`}
+                />
+              )}
             </div>
             <p className="text-[10px] text-slate-500 font-mono mt-2 text-center">
               Image Reference: {selectedCctvUrl} | Captured by Pedestal Beam Trigger

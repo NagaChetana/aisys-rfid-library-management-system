@@ -16,9 +16,14 @@ from app.services import offline_update_service
 
 client = TestClient(app)
 
+def get_admin_headers():
+    res = client.post("/api/auth/login", json={"username": "admin", "password": "admin123"})
+    token = res.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
 def test_backup_creation_and_metadata():
     """Verify consistent online backup creation and companion JSON metadata (FR11, NFR01)."""
-    res = client.post("/api/admin/backups", json={"note": "Automated Unit Test Backup"})
+    res = client.post("/api/admin/backups", json={"note": "Automated Unit Test Backup"}, headers=get_admin_headers())
     assert res.status_code == 200
     data = res.json()
 
@@ -40,13 +45,14 @@ def test_backup_creation_and_metadata():
 
 def test_backup_listing_and_validation():
     """Verify listing existing backups and validating integrity (FR11, NFR01)."""
-    list_res = client.get("/api/admin/backups")
+    headers = get_admin_headers()
+    list_res = client.get("/api/admin/backups", headers=headers)
     assert list_res.status_code == 200
     backups = list_res.json()
     assert len(backups) >= 1
 
     first_backup = backups[0]["filename"]
-    val_res = client.get(f"/api/admin/backups/{first_backup}/validate")
+    val_res = client.get(f"/api/admin/backups/{first_backup}/validate", headers=headers)
     assert val_res.status_code == 200
     val_data = val_res.json()
     assert val_data["is_valid"] is True
@@ -231,7 +237,8 @@ def test_offline_update_apply_and_rollback():
     )
 
     # Apply update via API
-    apply_res = client.post("/api/admin/updates/apply", json={"package_path": pkg_res["package_path"]})
+    headers = get_admin_headers()
+    apply_res = client.post("/api/admin/updates/apply", json={"package_path": pkg_res["package_path"]}, headers=headers)
     assert apply_res.status_code == 200
     apply_data = apply_res.json()
     assert apply_data["status"] == "success"
@@ -243,7 +250,7 @@ def test_offline_update_apply_and_rollback():
     assert ver_res.json()["version"] == "1.1.0-test"
 
     # Rollback via API
-    rb_res = client.post("/api/admin/updates/rollback", json={"snapshot_id": apply_data["snapshot_id"]})
+    rb_res = client.post("/api/admin/updates/rollback", json={"snapshot_id": apply_data["snapshot_id"]}, headers=headers)
     assert rb_res.status_code == 200
     rb_data = rb_res.json()
     assert rb_data["status"] == "success"
@@ -253,7 +260,7 @@ def test_offline_update_apply_and_rollback():
     assert offline_update_service.get_current_app_version() == initial_version
 
     # Verify history is auditable
-    hist_res = client.get("/api/admin/updates/history")
+    hist_res = client.get("/api/admin/updates/history", headers=headers)
     assert hist_res.status_code == 200
     hist = hist_res.json()
     assert len(hist) >= 2

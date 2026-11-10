@@ -353,13 +353,18 @@ def test_ac09_offline_execution_update_and_documented_rollback():
         files_to_include={"data/updates/patch_ac09.txt": temp_patch}
     )
 
+    # Login as admin to get authorized token
+    admin_login = client.post("/api/auth/login", json={"username": "admin", "password": "admin123"})
+    admin_token = admin_login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
     # Apply offline update
-    apply_res = client.post("/api/admin/updates/apply", json={"package_path": pkg["package_path"]})
+    apply_res = client.post("/api/admin/updates/apply", json={"package_path": pkg["package_path"]}, headers=headers)
     assert apply_res.status_code == 200
     assert apply_res.json()["current_version"] == "1.2.0-ac09"
 
     # Rollback to pre-update snapshot
-    rb_res = client.post("/api/admin/updates/rollback", json={"snapshot_id": apply_res.json()["snapshot_id"]})
+    rb_res = client.post("/api/admin/updates/rollback", json={"snapshot_id": apply_res.json()["snapshot_id"]}, headers=headers)
     assert rb_res.status_code == 200
     assert rb_res.json()["current_version"] == cur_version
 

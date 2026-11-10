@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import get_current_user_optional
+from app.core.security import get_current_user_optional, require_role
 from app.schemas.inventory import (
     InventorySessionCreate, InventorySessionOut, InventorySessionDetail,
     BulkInventoryScanRequest, BulkInventoryScanResult
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/inventory", tags=["RFID Inventory & Stock Verificati
 def create_inventory_session(
     req: InventorySessionCreate,
     db: Session = Depends(get_db),
-    user = Depends(get_current_user_optional)
+    user = Depends(require_role(["ADMIN", "LIBRARIAN"]))
 ):
     """Initializes a new stock verification inventory session for a target shelf (FR06)."""
     actor_id = user.id if user else None
@@ -74,7 +74,8 @@ def scan_items(
 @router.post("/sessions/{session_id}/complete", response_model=InventorySessionDetail)
 def complete_inventory_session(
     session_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user = Depends(require_role(["ADMIN", "LIBRARIAN"]))
 ):
     """Finalizes inventory session, marks missing items, and writes completion audit record."""
     try:

@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 class Token(BaseModel):
     access_token: str
@@ -28,11 +28,19 @@ class RoleOut(BaseModel):
 
 class UserCreate(BaseModel):
     username: str
-    email: EmailStr
+    email: str          # Accept any string; internal/air-gapped deployments use .local domains
     password: str
     role_id: int
     full_name: str
     smart_card_uid: Optional[str] = None
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None  # Same rationale — accept internal domain emails
+    role_id: Optional[int] = None
+    smart_card_uid: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class UserOut(BaseModel):
     id: int

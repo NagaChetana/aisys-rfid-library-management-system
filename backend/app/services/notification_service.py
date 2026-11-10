@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.models.notification import NotificationQueue
-from app.notifications.adapters import default_email_adapter, default_sms_adapter
+from app.notifications.adapters import default_email_adapter, default_sms_adapter, default_print_adapter
 from app.services.event_broadcaster import broadcaster
 
 def enqueue_and_send(
@@ -37,7 +37,16 @@ def enqueue_and_send(
     # Attempt immediate dispatch
     try:
         notification.attempts += 1
-        adapter = default_email_adapter if channel.lower() == "email" else default_sms_adapter
+        ch = channel.lower()
+        if ch == "email":
+            adapter = default_email_adapter
+        elif ch == "sms":
+            adapter = default_sms_adapter
+        elif ch in ["print", "thermal_print"]:
+            adapter = default_print_adapter
+        else:
+            adapter = default_email_adapter
+
         success = adapter.send(recipient=notification.recipient, subject=notification.subject, body=notification.body, metadata=metadata)
         if success:
             notification.status = "sent"
@@ -63,6 +72,54 @@ def enqueue_and_send(
     })
 
     return notification
+
+def retry_failed_notification(db: Session, notification_id: int) -> NotificationQueue:
+    """Retries dispatch of a previously failed notification (FR09)."""
+    notification = db.query(NotificationQueue).filter(NotificationQueue.id == notification_id).first()
+    if not notification:
+        raise ValueError(f"Notification ID {notification_id} not found.")
+
+    notification.attempts += 1
+    try:
+        ch = notification.channel.lower()
+        if ch == "email":
+            adapter = default_email_adapter
+        elif ch == "sms":
+            adapter = default_sms_adapter
+        elif ch in ["print", "thermal_print"]:
+            adapter = default_print_adapter
+        else:
+            adapter = default_email_adapter
+
+        success = adapter.send(recipient=notification.recipient, subject=notification.subject, body=notification.body)
+        if success:
+            notification.status = "sent"
+            notification.sent_at = datetime.now(timezone.utc)
+            notification.error_message = None
+        else:
+            notification.status = "failed"
+            notification.error_message = "Retry adapter returned failure."
+    except Exception as e:
+        notification.status = "failed"
+        notification.error_message = str(e)
+
+    db.commit()
+    db.refresh(notification)
+    return notification
+
+def list_notifications(
+    db: Session,
+    channel: Optional[str] = None,
+    status: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50
+) -> List[NotificationQueue]:
+    query = db.query(NotificationQueue)
+    if channel:
+        query = query.filter(NotificationQueue.channel == channel.lower())
+    if status:
+        query = query.filter(NotificationQueue.status == status.lower())
+    return query.order_by(desc(NotificationQueue.id)).offset(skip).limit(limit).all()
 
 def send_gate_alarm_email(
     db: Session,

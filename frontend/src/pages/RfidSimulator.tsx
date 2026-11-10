@@ -16,7 +16,8 @@ import {
   Plus,
   Trash2,
   Sliders,
-  Terminal
+  Terminal,
+  ChevronDown
 } from 'lucide-react';
 import { api } from '../services/api';
 import { StaffScanResult, SmartCardTapResult } from '../types';
@@ -582,25 +583,32 @@ export const RfidSimulator: React.FC = () => {
               )}
 
               {cardTapResult.entity_type === 'member' && (
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Member</span>
-                    <span className="font-semibold text-white">{cardTapResult.full_name}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">{cardTapResult.membership_number}</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs bg-slate-900/60 p-3.5 rounded-lg border border-slate-800">
+                  <div className="min-w-0">
+                    <span className="text-[10px] text-slate-500 block uppercase font-semibold tracking-wider">Patron Legal Name</span>
+                    <span className="font-semibold text-white break-words block mt-0.5">{cardTapResult.full_name}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 block">Status</span>
+                    <span className="text-[10px] text-slate-500 block uppercase font-semibold tracking-wider">Membership ID</span>
+                    <span className="font-mono text-cyan-400 font-semibold block mt-0.5">{cardTapResult.membership_number}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block uppercase font-semibold tracking-wider">Account Status</span>
                     <span
-                      className={`font-bold ${
-                        cardTapResult.status === 'active' ? 'text-emerald-400' : 'text-rose-400'
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-1 ${
+                        cardTapResult.status === 'active'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                       }`}
                     >
                       {cardTapResult.status?.toUpperCase()}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 block">Fines</span>
-                    <span className="font-mono text-amber-400">${cardTapResult.fine_balance?.toFixed(2)}</span>
+                    <span className="text-[10px] text-slate-500 block uppercase font-semibold tracking-wider">Outstanding Fines</span>
+                    <span className={`font-mono font-bold block mt-0.5 ${Number(cardTapResult.fine_balance) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      ${Number(cardTapResult.fine_balance || 0).toFixed(2)}
+                    </span>
                   </div>
                 </div>
               )}
@@ -624,16 +632,19 @@ export const RfidSimulator: React.FC = () => {
                 <Network className="w-4 h-4 text-cyan-400" />
                 NCIP 2.0 Mock Request (NISO Z39.83)
               </h2>
-              <select
-                value={ncipAction}
-                onChange={(e) => handleNcipActionChange(e.target.value)}
-                className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-cyan-300 font-mono"
-              >
-                <option value="LookupUser">LookupUser</option>
-                <option value="CheckoutItem">CheckoutItem</option>
-                <option value="CheckinItem">CheckinItem</option>
-                <option value="RenewItem">RenewItem</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={ncipAction}
+                  onChange={(e) => handleNcipActionChange(e.target.value)}
+                  className="appearance-none bg-slate-950 border border-slate-700 rounded-lg pl-3 pr-8 py-1.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500 cursor-pointer"
+                >
+                  <option value="LookupUser">LookupUser</option>
+                  <option value="CheckoutItem">CheckoutItem</option>
+                  <option value="CheckinItem">CheckinItem</option>
+                  <option value="RenewItem">RenewItem</option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
 
             <textarea
@@ -667,7 +678,7 @@ export const RfidSimulator: React.FC = () => {
 
             <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 min-h-[200px] overflow-x-auto font-mono text-xs text-slate-300">
               {ncipResponse ? (
-                <pre>{JSON.stringify(ncipResponse, null, 2)}</pre>
+                <pre className="whitespace-pre-wrap break-words break-all font-mono">{JSON.stringify(ncipResponse, null, 2)}</pre>
               ) : (
                 <span className="text-slate-600">Send an NCIP message to view adapter response.</span>
               )}
@@ -748,7 +759,7 @@ export const RfidSimulator: React.FC = () => {
               <div className="space-y-3">
                 <div>
                   <span className="text-[10px] text-slate-400 block mb-1">Raw Response Frame:</span>
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-xs text-amber-300 break-all">
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-xs text-amber-300 break-all overflow-x-auto">
                     {sip2Response.raw_response}
                   </div>
                 </div>
@@ -762,8 +773,8 @@ export const RfidSimulator: React.FC = () => {
 
                 <div>
                   <span className="text-[10px] text-slate-400 block mb-1">Parsed Domain Payload:</span>
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-xs text-slate-300">
-                    <pre>{JSON.stringify(sip2Response.parsed, null, 2)}</pre>
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-xs text-slate-300 overflow-x-auto">
+                    <pre className="whitespace-pre-wrap break-words break-all font-mono">{JSON.stringify(sip2Response.parsed, null, 2)}</pre>
                   </div>
                 </div>
               </div>

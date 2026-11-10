@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Database,
   UploadCloud,
@@ -31,28 +31,54 @@ export const DataMigration: React.FC = () => {
   const [recordCount, setRecordCount] = useState<number>(20000);
   const [invalidCount, setInvalidCount] = useState<number>(100);
 
-  const loadBatches = async () => {
-    setLoading(true);
-    try {
-      const data = await api.getMigrationBatches({ limit: 20 });
-      setBatches(data);
-      if (data.length > 0 && !selectedBatch) {
-        setSelectedBatch(data[0]);
-        loadReport(data[0].id);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const selectedBatchRef = useRef<MigrationBatch | null>(selectedBatch);
+  useEffect(() => {
+    selectedBatchRef.current = selectedBatch;
+  }, [selectedBatch]);
 
   const loadReport = async (batchId: number) => {
     try {
       const rep = await api.getMigrationReport(batchId);
       setReport(rep);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Failed to load migration report', err);
+      setErrorMessage(err.message || `Failed to load validation report for batch #${batchId}`);
+    }
+  };
+
+  const loadBatches = async () => {
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      const data = await api.getMigrationBatches({ limit: 20 });
+      setBatches(data);
+      if (data && data.length > 0) {
+        // Re-sync with fresh data for currently selected batch, or default to latest
+        const currentId = selectedBatchRef.current?.id;
+        const target = (currentId ? data.find((b) => b.id === currentId) : null) || data[0];
+        setSelectedBatch(target);
+        await loadReport(target.id);
+      } else {
+        setSelectedBatch(null);
+        setReport(null);
+      }
+    } catch (err: any) {
+      console.error('Failed to load migration batches', err);
+      setErrorMessage(err.message || 'Failed to refresh migration batch information');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setActionMessage(null);
+    setErrorMessage(null);
+    try {
+      await loadBatches();
+      setActionMessage('Migration batch information refreshed successfully.');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to refresh migration batch information');
     }
   };
 
@@ -173,10 +199,12 @@ export const DataMigration: React.FC = () => {
         </div>
 
         <button
-          onClick={loadBatches}
-          className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg"
+          onClick={handleManualRefresh}
+          disabled={loading || isProcessing}
+          title="Refresh Migration Batches"
+          className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition-colors disabled:opacity-50"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-400' : ''}`} />
         </button>
       </div>
 
@@ -209,6 +237,11 @@ export const DataMigration: React.FC = () => {
             <p className="text-[11px] text-slate-400 leading-relaxed">
               Generates ~20,000 synthetic bibliographic records in-memory, validates mandatory ISBN/Dewey fields, and stages them for atomic ingestion.
             </p>
+
+            <div className="text-[11px] text-cyan-300 bg-cyan-950/40 border border-cyan-800/40 rounded-lg p-2.5 flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span>Independent In-Memory Generator: Operates directly without requiring any CSV file upload.</span>
+            </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
@@ -283,18 +316,23 @@ export const DataMigration: React.FC = () => {
                       : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:bg-slate-800/40'
                   }`}
                 >
-                  <div className="flex items-center justify-between font-semibold">
-                    <span className="font-mono text-[11px] truncate">{b.batch_number}</span>
+                  <div className="flex items-center justify-between font-semibold gap-2 min-w-0">
+                    <span className="font-mono text-[11px] truncate flex-1">{b.batch_number}</span>
                     <span
-                      className={`text-[9px] px-1.5 py-0.5 rounded font-mono uppercase ${
+                      className={`text-[9px] px-1.5 py-0.5 rounded font-mono uppercase shrink-0 truncate max-w-[130px] border ${
                         b.status === 'migrated'
-                          ? 'bg-emerald-500/20 text-emerald-300'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                           : b.status === 'rolled_back'
-                          ? 'bg-slate-800 text-slate-400'
-                          : 'bg-amber-500/20 text-amber-300'
+                          ? 'bg-slate-800 text-slate-400 border-slate-700'
+                          : b.status === 'validated_with_errors'
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : b.status === 'failed'
+                          ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                          : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
                       }`}
+                      title={b.status}
                     >
-                      {b.status}
+                      {b.status.replace(/_/g, ' ')}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-[10px] text-slate-500 font-mono mt-1">
@@ -368,11 +406,26 @@ export const DataMigration: React.FC = () => {
                       {selectedBatch.invalid_records.toLocaleString()}
                     </span>
                   </div>
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg">
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg min-w-0 flex flex-col justify-between overflow-hidden">
                     <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Status</span>
-                    <span className="text-sm font-bold font-mono text-cyan-400 uppercase mt-1 block">
-                      {selectedBatch.status}
-                    </span>
+                    <div className="mt-1">
+                      <span
+                        title={selectedBatch.status}
+                        className={`text-[11px] font-bold uppercase px-2 py-0.5 rounded border inline-block max-w-full break-words leading-tight ${
+                          selectedBatch.status === 'migrated'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : selectedBatch.status === 'rolled_back'
+                            ? 'bg-slate-800 text-slate-400 border-slate-700'
+                            : selectedBatch.status === 'validated_with_errors'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                            : selectedBatch.status === 'failed'
+                            ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                            : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                        }`}
+                      >
+                        {selectedBatch.status.replace(/_/g, ' ')}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

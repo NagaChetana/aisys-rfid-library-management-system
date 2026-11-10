@@ -1,4 +1,5 @@
 import uuid
+import time
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple, Dict, Any
 from sqlalchemy.orm import Session
@@ -10,6 +11,8 @@ from app.models.setting import SystemSetting
 from app.services.audit_service import log_audit_event
 from app.services.event_broadcaster import broadcaster
 from app.services import notification_service
+
+_recent_gate_passages: Dict[Tuple[str, str], Tuple[float, Any]] = {}
 
 def increment_footfall(db: Session, count: int = 1) -> int:
     setting = db.query(SystemSetting).filter(SystemSetting.key == "gate_footfall_count").first()
@@ -50,8 +53,19 @@ def process_gate_tag(
     - EAS = True (Armed/Active) -> Unauthorized book removal -> Alarm triggered + CCTV link + Email alert
     - EAS = False (Disarmed/Issued) -> Authorized passage -> No alarm
     - Unknown tag -> Unregistered tag passage
+    Suppresses rapid accidental duplicate triggers of the same tag within a 1500ms sliding window.
     """
     clean_uid = tag_uid.strip().upper()
+    now_ts = time.time()
+    cache_key = (reader_id.strip().upper(), clean_uid)
+    if cache_key in _recent_gate_passages:
+        prev_ts, prev_event = _recent_gate_passages[cache_key]
+        if (now_ts - prev_ts) < 1.5:
+            # Check if event still exists in DB session
+            existing = db.query(GateEvent).filter(GateEvent.id == prev_event.id).first()
+            if existing:
+                return existing
+
     now = datetime.now(timezone.utc)
 
     # 1. Look up tag and associated book copy
@@ -149,6 +163,10 @@ def process_gate_tag(
             "timestamp": now.isoformat()
         }
     )
+
+    _recent_gate_passages[cache_key] = (now_ts, gate_event)
+    if len(_recent_gate_passages) > 500:
+        _recent_gate_passages.clear()
 
     return gate_event
 

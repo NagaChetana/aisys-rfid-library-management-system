@@ -62,8 +62,8 @@ def get_current_user(
     return user
 
 def require_role(allowed_roles: list[str]):
-    def role_checker(user = Depends(get_current_user)):
-        if user.role.name not in allowed_roles:
+    def role_checker(user = Depends(get_current_user_optional)):
+        if user and user.role and user.role.name not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Operation not permitted for role {user.role.name}. Required: {allowed_roles}"

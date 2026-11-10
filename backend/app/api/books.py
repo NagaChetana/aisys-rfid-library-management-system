@@ -49,7 +49,7 @@ def map_book_to_out(book) -> BookOut:
         category_name=book.category.name if book.category else None,
         category_code=book.category.code if book.category else None,
         copies_count=len(copies),
-        available_copies_count=sum(1 for c in copies if c.status == "available"),
+        available_copies_count=sum(1 for c in copies if c.status == "available" and not c.is_reference_only),
         migration_batch_id=book.migration_batch_id,
         items=copies,
         created_at=book.created_at,
@@ -84,7 +84,7 @@ def list_books(
 def create_book(
     book_in: BookCreate,
     db: Session = Depends(get_db),
-    user = Depends(get_current_user_optional)
+    user = Depends(require_role(["ADMIN", "LIBRARIAN"]))
 ):
     actor_id = user.id if user else None
     existing = catalog_service.get_book_by_isbn(db, book_in.isbn)
@@ -147,7 +147,7 @@ def add_copy(
     id: int,
     item_in: BookItemCreate,
     db: Session = Depends(get_db),
-    user = Depends(get_current_user_optional)
+    user = Depends(require_role(["ADMIN", "LIBRARIAN"]))
 ):
     actor_id = user.id if user else None
     try:
@@ -169,3 +169,42 @@ def add_copy(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+# --- BARCODE & SPINE LABEL WORKFLOWS (FR01) ---
+
+@router.get("/items/{accession_number}/spine-label")
+def get_spine_label(accession_number: str, db: Session = Depends(get_db)):
+    """Generates standard library spine label layout and printable HTML (FR01)."""
+    from app.services import label_service
+    item = catalog_service.get_item_by_accession(db, accession_number)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Item with accession '{accession_number}' not found")
+
+    book = item.book
+    author_name = book.author.name if book and book.author else None
+    dewey_code = book.category.code if book and book.category else "000"
+    call_number = book.call_number if book else None
+    title = book.title if book else "Unknown Title"
+
+    payload = label_service.generate_spine_label_payload(
+        call_number=call_number,
+        dewey_code=dewey_code,
+        author_name=author_name,
+        title=title,
+        accession_number=item.accession_number,
+        barcode=item.barcode
+    )
+    return payload
+
+@router.get("/items/{accession_number}/barcode")
+def get_item_barcode(accession_number: str, db: Session = Depends(get_db)):
+    """Generates pure vector Code-128 SVG barcode for thermal printing (FR01)."""
+    from app.services import label_service
+    from fastapi.responses import Response
+    item = catalog_service.get_item_by_accession(db, accession_number)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Item with accession '{accession_number}' not found")
+
+    svg = label_service.generate_code128_svg(item.barcode or item.accession_number)
+    return Response(content=svg, media_type="image/svg+xml")
+

@@ -31,7 +31,7 @@ def map_member_to_out(db: Session, member) -> MemberOut:
 @router.get("", response_model=dict)
 def list_members(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=500),
     q: Optional[str] = Query(None, description="Search by name, number, email or card UID"),
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db)
@@ -50,9 +50,14 @@ def list_members(
 def create_member(
     member_in: MemberCreate,
     db: Session = Depends(get_db),
-    user = Depends(get_current_user_optional)
+    user = Depends(require_role(["ADMIN", "LIBRARIAN"]))
 ):
     actor_id = user.id if user else None
+    if user and user.role and user.role.name == "LIBRARIAN" and member_in.smart_card_uid:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Card administration is restricted to System Administrators"
+        )
     try:
         member = member_service.create_member(db, member_in, actor_id=actor_id)
         return map_member_to_out(db, member)
@@ -71,9 +76,14 @@ def update_member(
     id: int,
     member_in: MemberUpdate,
     db: Session = Depends(get_db),
-    user = Depends(get_current_user_optional)
+    user = Depends(require_role(["ADMIN", "LIBRARIAN"]))
 ):
     actor_id = user.id if user else None
+    if user and user.role and user.role.name == "LIBRARIAN" and member_in.smart_card_uid:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Card administration is restricted to System Administrators"
+        )
     try:
         member = member_service.update_member(db, id, member_in, actor_id=actor_id)
         return map_member_to_out(db, member)
@@ -85,7 +95,7 @@ def block_member(
     id: int,
     reason: str = Query("Admin block", description="Reason for blocking member"),
     db: Session = Depends(get_db),
-    user = Depends(get_current_user_optional)
+    user = Depends(require_role(["ADMIN"]))
 ):
     actor_id = user.id if user else None
     try:
@@ -98,7 +108,7 @@ def block_member(
 def unblock_member(
     id: int,
     db: Session = Depends(get_db),
-    user = Depends(get_current_user_optional)
+    user = Depends(require_role(["ADMIN"]))
 ):
     actor_id = user.id if user else None
     try:
@@ -112,7 +122,7 @@ def assign_card(
     id: int,
     req: AssignCardRequest,
     db: Session = Depends(get_db),
-    user = Depends(get_current_user_optional)
+    user = Depends(require_role(["ADMIN"]))
 ):
     actor_id = user.id if user else None
     try:

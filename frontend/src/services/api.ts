@@ -3,7 +3,9 @@ import {
   CirculationTransaction, DueDateEnquiryResult, Fine, RfidTag, RfidTagHistory,
   StaffScanResult, SmartCardTapResult,
   InventorySession, InventorySessionDetail, BulkInventoryScanResult,
-  GateEvent, GateStats, NotificationRecord, MigrationBatch, MigrationValidationReport
+  GateEvent, GateStats, NotificationRecord, MigrationBatch, MigrationValidationReport,
+  User, UserCreateRequest, UserUpdateRequest,
+  DatabaseBackup, BackupValidationResult, OfflineVersionInfo, UpdateHistoryItem
 } from '../types';
 
 const BASE_URL = 'http://127.0.0.1:8000/api';
@@ -11,6 +13,18 @@ const BASE_URL = 'http://127.0.0.1:8000/api';
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('access_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export class ApiError extends Error {
+  status: number;
+  data: any;
+
+  constructor(message: string, status: number, data?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+  }
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -27,15 +41,16 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!response.ok) {
     let errorDetail = `Error: ${response.status} ${response.statusText}`;
+    let errJson: any = null;
     try {
-      const errJson = await response.json();
-      if (errJson.detail) {
+      errJson = await response.json();
+      if (errJson && errJson.detail) {
         errorDetail = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
       }
     } catch {
       // ignore
     }
-    throw new Error(errorDetail);
+    throw new ApiError(errorDetail, response.status, errJson);
   }
 
   return response.json();
@@ -181,17 +196,23 @@ export const api = {
   getCirculationHistory: (params: {
     skip?: number;
     limit?: number;
+    q?: string;
     member_id?: number;
     book_item_id?: number;
     transaction_type?: string;
+    status?: string;
+    protocol?: string;
     active_only?: boolean;
   }) => {
     const query = new URLSearchParams();
     if (params.skip !== undefined) query.append('skip', params.skip.toString());
     if (params.limit !== undefined) query.append('limit', params.limit.toString());
+    if (params.q) query.append('q', params.q);
     if (params.member_id) query.append('member_id', params.member_id.toString());
     if (params.book_item_id) query.append('book_item_id', params.book_item_id.toString());
     if (params.transaction_type) query.append('transaction_type', params.transaction_type);
+    if (params.status) query.append('status', params.status);
+    if (params.protocol) query.append('protocol', params.protocol);
     if (params.active_only) query.append('active_only', 'true');
     return request<{ items: CirculationTransaction[]; total: number; skip: number; limit: number }>(
       `/circulation/history?${query.toString()}`
@@ -204,6 +225,12 @@ export const api = {
     if (params.status) query.append('status', params.status);
     return request<Fine[]>(`/circulation/fines?${query.toString()}`);
   },
+
+  payFine: (fineId: number, amount?: number) =>
+    request<Fine>(`/circulation/fines/${fineId}/pay`, {
+      method: 'POST',
+      body: JSON.stringify(amount !== undefined ? { amount } : {}),
+    }),
 
   // RFID Middleware & Hardware (Batch 2)
   getRfidTags: (params: { skip?: number; limit?: number; q?: string; status?: string }) => {
@@ -376,4 +403,161 @@ export const api = {
       `/migration/batches/${batchId}/rollback`,
       { method: 'POST' }
     ),
+
+  // --- ACQUISITIONS & SERIALS (FR01) ---
+  getSuppliers: () => request<any[]>('/acquisitions/suppliers'),
+  createSupplier: (data: any) =>
+    request<any>('/acquisitions/suppliers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getPurchaseOrders: () => request<any[]>('/acquisitions/orders'),
+  createPurchaseOrder: (data: any) =>
+    request<any>('/acquisitions/orders', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  receivePurchaseOrderItem: (orderId: number, data: any) =>
+    request<any>(`/acquisitions/orders/${orderId}/receive`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getSerialSubscriptions: () => request<any[]>('/acquisitions/serials'),
+  createSerialSubscription: (data: any) =>
+    request<any>('/acquisitions/serials', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  receiveSerialIssue: (subscriptionId: number, data: any) =>
+    request<any>(`/acquisitions/serials/${subscriptionId}/issues`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // --- BARCODE & SPINE LABELS (FR01) ---
+  getSpineLabel: (accessionNumber: string) =>
+    request<any>(`/books/items/${encodeURIComponent(accessionNumber)}/spine-label`),
+
+  // --- RFID READERS & TAG HEALTH (FR03, FR05) ---
+  getReaderClients: () => request<any[]>('/rfid/readers'),
+  sendReaderHeartbeat: (data: { reader_id: string; status?: string; ip_address?: string }) =>
+    request<any>('/rfid/readers/heartbeat', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getTagHealthSummary: () => request<any>('/rfid/tags/health'),
+
+  // --- SYSTEM SETTINGS CONFIGURATION (FR11) ---
+  getSystemSettings: () => request<any[]>('/admin/settings'),
+  updateSystemSettings: (data: Record<string, any>) =>
+    request<{ message: string; updated: Record<string, any> }>('/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // --- NOTIFICATION RETRY & ADAPTERS (FR09) ---
+  getNotificationAdapters: () => request<{ adapters: any[] }>('/notifications/adapters'),
+  retryNotification: (id: number) =>
+    request<any>(`/notifications/${id}/retry`, {
+      method: 'POST',
+    }),
+
+  // --- FILTERABLE REPORTS & CSV EXPORT (FR08, AC08) ---
+  getCirculationReport: (params: { transaction_type?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.transaction_type) q.append('transaction_type', params.transaction_type);
+    if (params.limit) q.append('limit', params.limit.toString());
+    return request<{ total: number; records: any[] }>(`/reports/circulation?${q.toString()}`);
+  },
+  getTaggedItemsReport: (params: { status?: string; shelf_location?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.status) q.append('status', params.status);
+    if (params.shelf_location) q.append('shelf_location', params.shelf_location);
+    if (params.limit) q.append('limit', params.limit.toString());
+    return request<{ total: number; records: any[] }>(`/reports/tagged-items?${q.toString()}`);
+  },
+  getMembersReport: (params: { status?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.status) q.append('status', params.status);
+    if (params.limit) q.append('limit', params.limit.toString());
+    return request<{ total: number; records: any[] }>(`/reports/members?${q.toString()}`);
+  },
+  getFinesReport: (params: { status?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.status) q.append('status', params.status);
+    if (params.limit) q.append('limit', params.limit.toString());
+    return request<{ total: number; records: any[] }>(`/reports/fines?${q.toString()}`);
+  },
+  getGateEventsReport: (params: { alarm_only?: boolean; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.alarm_only !== undefined) q.append('alarm_only', params.alarm_only.toString());
+    if (params.limit) q.append('limit', params.limit.toString());
+    return request<{ total: number; records: any[] }>(`/reports/gate-events?${q.toString()}`);
+  },
+  getOperatorActivityReport: (params: { action?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.action) q.append('action', params.action);
+    if (params.limit) q.append('limit', params.limit.toString());
+    return request<{ total: number; records: any[] }>(`/reports/operator-activity?${q.toString()}`);
+  },
+
+  // Admin User Management
+  listAdminUsers: () => request<User[]>('/admin/users'),
+
+  createAdminUser: (data: UserCreateRequest) =>
+    request<User>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateAdminUser: (id: number, data: UserUpdateRequest) =>
+    request<User>(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  toggleAdminUserStatus: (id: number) =>
+    request<{ id: number; is_active: boolean; message: string }>(`/admin/users/${id}/toggle-status`, {
+      method: 'POST',
+    }),
+
+  getRoles: () => request<any[]>('/admin/roles'),
+
+  getAuditLogs: (limit: number = 100) => request<any[]>(`/admin/audit-logs?limit=${limit}`),
+
+  // Backup, Restore & Disaster Recovery (AC10, FR11)
+  createBackup: (note?: string) =>
+    request<DatabaseBackup>('/admin/backups', {
+      method: 'POST',
+      body: JSON.stringify(note ? { note } : {}),
+    }),
+
+  listBackups: () => request<DatabaseBackup[]>('/admin/backups'),
+
+  validateBackup: (filename: string) =>
+    request<BackupValidationResult>(`/admin/backups/${encodeURIComponent(filename)}/validate`),
+
+  restoreBackup: (filename: string) =>
+    request<{ message: string; restored_from: string; path: string }>(`/admin/backups/${encodeURIComponent(filename)}/restore`, {
+      method: 'POST',
+    }),
+
+  // Offline Updates & Lifecycle (AC09, FR12)
+  getApplicationVersion: () => request<OfflineVersionInfo>('/admin/updates/version'),
+
+  getUpdateHistory: () => request<UpdateHistoryItem[]>('/admin/updates/history'),
+
+  applyUpdatePackage: (packagePath: string) =>
+    request<{ message: string; version: string; snapshot_id: string }>('/admin/updates/apply', {
+      method: 'POST',
+      body: JSON.stringify({ package_path: packagePath }),
+    }),
+
+  rollbackUpdatePackage: (snapshotId?: string) =>
+    request<{ message: string; rolled_back_to: string }>('/admin/updates/rollback', {
+      method: 'POST',
+      body: JSON.stringify(snapshotId ? { snapshot_id: snapshotId } : {}),
+    }),
 };

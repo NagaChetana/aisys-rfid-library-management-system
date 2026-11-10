@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Repeat,
   CheckCircle,
@@ -14,10 +14,14 @@ import {
   Calendar,
   Layers,
   History,
-  Info
+  Info,
+  RefreshCw,
+  Filter,
+  User,
+  X
 } from 'lucide-react';
 import { api } from '../services/api';
-import { CirculationTransaction, DueDateEnquiryResult, Fine } from '../types';
+import { CirculationTransaction, DueDateEnquiryResult, Fine, Member } from '../types';
 
 export const Circulation: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'checkout' | 'checkin' | 'renew' | 'enquiry' | 'history' | 'fines'>('checkout');
@@ -29,6 +33,13 @@ export const Circulation: React.FC = () => {
   const [checkoutResult, setCheckoutResult] = useState<CirculationTransaction | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
+
+  // Patron Autocomplete State
+  const [patronSuggestions, setPatronSuggestions] = useState<Member[]>([]);
+  const [isSearchingPatron, setIsSearchingPatron] = useState<boolean>(false);
+  const [showPatronDropdown, setShowPatronDropdown] = useState<boolean>(false);
+  const [highlightedPatronIndex, setHighlightedPatronIndex] = useState<number>(-1);
+  const patronDropdownRef = useRef<HTMLDivElement>(null);
 
   // Checkin State
   const [checkinItem, setCheckinItem] = useState<string>('');
@@ -49,11 +60,41 @@ export const Circulation: React.FC = () => {
   const [enquiryError, setEnquiryError] = useState<string | null>(null);
   const [isEnquiring, setIsEnquiring] = useState<boolean>(false);
 
-  // History & Fines State
+  // History State with Search & Filtering
   const [transactions, setTransactions] = useState<CirculationTransaction[]>([]);
-  const [fines, setFines] = useState<Fine[]>([]);
+  const [historySearch, setHistorySearch] = useState<string>('');
+  const [historyStatus, setHistoryStatus] = useState<string>('all');
+  const [historyProtocol, setHistoryProtocol] = useState<string>('all');
+  const [activeLoansOnly, setActiveLoansOnly] = useState<boolean>(false);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
-  const [activeLoansOnly, setActiveLoansOnly] = useState<boolean>(true);
+
+  // Fines State
+  const [fines, setFines] = useState<Fine[]>([]);
+  const [payingFineId, setPayingFineId] = useState<number | null>(null);
+  const [fineActionMsg, setFineActionMsg] = useState<{ text: string; isError: boolean } | null>(null);
+
+  // Patron Autocomplete query handler
+  useEffect(() => {
+    if (!checkoutMember || checkoutMember.trim().length === 0) {
+      setPatronSuggestions([]);
+      setShowPatronDropdown(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingPatron(true);
+      try {
+        const res = await api.getMembers({ q: checkoutMember.trim(), limit: 7 });
+        setPatronSuggestions(res.items || []);
+        setShowPatronDropdown(true);
+        setHighlightedPatronIndex(-1);
+      } catch (e) {
+        console.error('Patron search error:', e);
+      } finally {
+        setIsSearchingPatron(false);
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [checkoutMember]);
 
   // Load History
   const loadHistory = async () => {
@@ -61,6 +102,9 @@ export const Circulation: React.FC = () => {
     try {
       const data = await api.getCirculationHistory({
         limit: 50,
+        q: historySearch.trim() || undefined,
+        status: historyStatus !== 'all' ? historyStatus : undefined,
+        protocol: historyProtocol !== 'all' ? historyProtocol : undefined,
         active_only: activeLoansOnly
       });
       setTransactions(data.items);
@@ -81,13 +125,33 @@ export const Circulation: React.FC = () => {
     }
   };
 
+  const handlePayFine = async (fineId: number, remainingDue: number) => {
+    if (!window.confirm(`Confirm fine payment and balance settlement of $${remainingDue.toFixed(2)}?`)) {
+      return;
+    }
+    setPayingFineId(fineId);
+    setFineActionMsg(null);
+    try {
+      await api.payFine(fineId, remainingDue);
+      setFineActionMsg({ text: `Successfully settled $${remainingDue.toFixed(2)}. Patron balance updated.`, isError: false });
+      await loadFines();
+    } catch (err: any) {
+      setFineActionMsg({ text: err.message || 'Failed to settle fine.', isError: true });
+    } finally {
+      setPayingFineId(null);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'history') {
-      loadHistory();
+      const timer = setTimeout(() => {
+        loadHistory();
+      }, 200);
+      return () => clearTimeout(timer);
     } else if (activeTab === 'fines') {
       loadFines();
     }
-  }, [activeTab, activeLoansOnly]);
+  }, [activeTab, activeLoansOnly, historySearch, historyStatus, historyProtocol]);
 
   // Handle Checkout
   const handleCheckout = async (e: React.FormEvent) => {
@@ -264,41 +328,120 @@ export const Circulation: React.FC = () => {
 
               <form onSubmit={handleCheckout} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">
-                      Patron Membership Number or Smart Card UID *
+                  <div className="relative" ref={patronDropdownRef}>
+                    <label className="block text-xs font-medium text-slate-300 mb-1 flex items-center justify-between">
+                      <span>Patron Membership Number or Smart Card UID *</span>
+                      {isSearchingPatron && (
+                        <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
+                          <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Searching...
+                        </span>
+                      )}
                     </label>
-                    <input
-                      type="text"
-                      value={checkoutMember}
-                      onChange={(e) => setCheckoutMember(e.target.value)}
-                      placeholder="e.g. MEM-00001 or CARD-ALICE-1001"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-                      required
-                    />
-                    <div className="flex gap-2 mt-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setCheckoutMember('MEM-00001')}
-                        className="text-[10px] text-slate-400 hover:text-amber-400 underline"
-                      >
-                        Alice (Active)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCheckoutMember('MEM-00002')}
-                        className="text-[10px] text-rose-400 hover:underline"
-                      >
-                        Bob (Blocked Test)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCheckoutMember('MEM-00003')}
-                        className="text-[10px] text-amber-400 hover:underline"
-                      >
-                        Charlie ($18.50 Fine Test)
-                      </button>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={checkoutMember}
+                        onChange={(e) => setCheckoutMember(e.target.value)}
+                        onFocus={() => {
+                          if (checkoutMember.trim().length > 0 && patronSuggestions.length > 0) {
+                            setShowPatronDropdown(true);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (!showPatronDropdown || patronSuggestions.length === 0) return;
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setHighlightedPatronIndex((prev) =>
+                              prev < patronSuggestions.length - 1 ? prev + 1 : 0
+                            );
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setHighlightedPatronIndex((prev) =>
+                              prev > 0 ? prev - 1 : patronSuggestions.length - 1
+                            );
+                          } else if (e.key === 'Enter') {
+                            if (highlightedPatronIndex >= 0 && patronSuggestions[highlightedPatronIndex]) {
+                              e.preventDefault();
+                              const sel = patronSuggestions[highlightedPatronIndex];
+                              setCheckoutMember(sel.membership_number);
+                              setShowPatronDropdown(false);
+                            }
+                          } else if (e.key === 'Escape') {
+                            setShowPatronDropdown(false);
+                          }
+                        }}
+                        placeholder="Search patron by name, membership #, or smart card..."
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                        required
+                        autoComplete="off"
+                      />
+                      {checkoutMember && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCheckoutMember('');
+                            setPatronSuggestions([]);
+                            setShowPatronDropdown(false);
+                          }}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
+
+                    {/* Dynamic Patron Autocomplete Dropdown */}
+                    {showPatronDropdown && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-2xl z-40 max-h-64 overflow-y-auto divide-y divide-slate-800">
+                        {patronSuggestions.length === 0 ? (
+                          !isSearchingPatron && (
+                            <div className="p-3 text-center text-xs text-slate-500 italic">
+                              No matching patrons found.
+                            </div>
+                          )
+                        ) : (
+                          patronSuggestions.map((m, idx) => (
+                            <div
+                              key={m.id}
+                              onMouseDown={() => {
+                                setCheckoutMember(m.membership_number);
+                                setShowPatronDropdown(false);
+                              }}
+                              onMouseEnter={() => setHighlightedPatronIndex(idx)}
+                              className={`p-2.5 cursor-pointer transition-colors flex items-center justify-between text-xs ${
+                                highlightedPatronIndex === idx ? 'bg-amber-500/20 text-white' : 'hover:bg-slate-800 text-slate-300'
+                              }`}
+                            >
+                              <div className="flex flex-col min-w-0 pr-2">
+                                <span className="font-semibold text-white truncate">{m.full_name}</span>
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
+                                  <span>{m.membership_number}</span>
+                                  {m.smart_card_uid && <span>• Card: {m.smart_card_uid}</span>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {m.fine_balance > 0 && (
+                                  <span className="text-[10px] font-mono text-amber-400 font-bold bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-800">
+                                    ${m.fine_balance.toFixed(2)}
+                                  </span>
+                                )}
+                                <span
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase font-mono ${
+                                    m.status === 'active'
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                      : m.status === 'blocked'
+                                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                  }`}
+                                >
+                                  {m.status}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -728,28 +871,81 @@ export const Circulation: React.FC = () => {
 
       {/* TAB 5: TRANSACTION HISTORY */}
       {activeTab === 'history' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
-              <History className="w-4 h-4 text-slate-400" />
-              Circulation Audit Log & Transaction Registry
-            </h2>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 flex items-center gap-2 cursor-pointer">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden space-y-4">
+          <div className="p-4 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+                <History className="w-4 h-4 text-slate-400" />
+                Circulation Audit Log & Transaction Registry
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Real-time transaction history across Internal UI, NCIP 2.0, and 3M SIP2 protocol adapters.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-slate-300 flex items-center gap-2 cursor-pointer bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-800">
                 <input
                   type="checkbox"
                   checked={activeLoansOnly}
                   onChange={(e) => setActiveLoansOnly(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0"
+                  className="rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0"
                 />
                 Active loans only
               </label>
               <button
                 onClick={loadHistory}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded"
+                disabled={historyLoading}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50"
               >
-                Refresh
+                <RefreshCw className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin text-amber-400' : ''}`} />
+                <span>Refresh</span>
               </button>
+            </div>
+          </div>
+
+          {/* Search & Filters Toolbar */}
+          <div className="px-4 pb-2 flex flex-col sm:flex-row items-center gap-3">
+            <div className="relative flex-1 w-full">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search accession #, book title, member name/ID, or TX #..."
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-8 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              />
+              {historySearch && (
+                <button
+                  onClick={() => setHistorySearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={historyStatus}
+                onChange={(e) => setHistoryStatus(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+              >
+                <option value="all">All Statuses</option>
+                <option value="active">Active Only</option>
+                <option value="returned">Returned</option>
+                <option value="overdue">Overdue</option>
+              </select>
+
+              <select
+                value={historyProtocol}
+                onChange={(e) => setHistoryProtocol(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+              >
+                <option value="all">All Sources</option>
+                <option value="INTERNAL_UI">Internal UI</option>
+                <option value="NCIP_2_0">NCIP 2.0</option>
+                <option value="SIP2">3M SIP2</option>
+              </select>
             </div>
           </div>
 
@@ -764,20 +960,27 @@ export const Circulation: React.FC = () => {
                   <th className="px-4 py-3 font-semibold">Protocol</th>
                   <th className="px-4 py-3 font-semibold">Due Date</th>
                   <th className="px-4 py-3 font-semibold">Status / Return Date</th>
-                  <th className="px-4 py-3 font-semibold">EAS Bit</th>
+                  <th className="px-4 py-3 font-semibold">Security State</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800 text-slate-300 font-mono text-[11px]">
                 {historyLoading ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
-                      Loading circulation records...
+                    <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <RefreshCw className="w-5 h-5 text-amber-400 animate-spin" />
+                        <span>Loading circulation transactions...</span>
+                      </div>
                     </td>
                   </tr>
                 ) : transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
-                      No circulation records found.
+                    <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        <Info className="w-5 h-5 text-slate-600 mb-1" />
+                        <span className="font-semibold text-slate-400">No circulation transactions match the selected filters.</span>
+                        <span className="text-[11px] text-slate-500 font-sans">Try clearing search terms or status filters.</span>
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -806,7 +1009,7 @@ export const Circulation: React.FC = () => {
                         <span className="text-[10px] text-slate-500 font-mono">{tx.membership_number}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">
+                        <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 font-sans">
                           {tx.protocol}
                         </span>
                       </td>
@@ -829,7 +1032,7 @@ export const Circulation: React.FC = () => {
                                 : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
                             }`}
                           >
-                            {tx.eas_bit ? 'ARMED' : 'DISARMED'}
+                            {tx.eas_bit ? 'Armed (Protected)' : 'Disarmed (Exit OK)'}
                           </span>
                         ) : (
                           <span className="text-slate-600">—</span>
@@ -846,19 +1049,40 @@ export const Circulation: React.FC = () => {
 
       {/* TAB 6: FINES REGISTRY */}
       {activeTab === 'fines' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden space-y-4">
           <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-rose-400" />
-              Patron Fine Ledger & Penalty Tracking
-            </h2>
+            <div>
+              <h2 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-rose-400" />
+                Patron Fine Ledger &amp; Penalty Tracking
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Manage overdue penalty assessments, balance settlements, and payment audit logs (FR04, FR11).
+              </p>
+            </div>
             <button
               onClick={loadFines}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded"
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded flex items-center gap-1.5"
             >
-              Refresh
+              <RefreshCw className="w-3 h-3" />
+              <span>Refresh</span>
             </button>
           </div>
+
+          {fineActionMsg && (
+            <div className={`mx-4 p-3 rounded-lg text-xs flex items-center gap-2 border ${
+              fineActionMsg.isError
+                ? 'bg-rose-950/50 border-rose-500/40 text-rose-300'
+                : 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300'
+            }`}>
+              {fineActionMsg.isError ? (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              ) : (
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              )}
+              <span>{fineActionMsg.text}</span>
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -866,45 +1090,73 @@ export const Circulation: React.FC = () => {
                 <tr>
                   <th className="px-4 py-3 font-semibold">ID</th>
                   <th className="px-4 py-3 font-semibold">Member</th>
-                  <th className="px-4 py-3 font-semibold">Amount</th>
+                  <th className="px-4 py-3 font-semibold">Total Amount</th>
+                  <th className="px-4 py-3 font-semibold">Paid</th>
                   <th className="px-4 py-3 font-semibold">Reason</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Assessed Date</th>
+                  <th className="px-4 py-3 font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800 text-slate-300 text-[11px]">
                 {fines.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                       No fines recorded in system.
                     </td>
                   </tr>
                 ) : (
-                  fines.map((f) => (
-                    <tr key={f.id} className="hover:bg-slate-800/40">
-                      <td className="px-4 py-3 font-mono text-slate-500">#{f.id}</td>
-                      <td className="px-4 py-3">
-                        <span className="font-semibold text-white block">{f.member_name}</span>
-                        <span className="text-[10px] text-slate-500 font-mono">{f.membership_number}</span>
-                      </td>
-                      <td className="px-4 py-3 font-bold text-rose-400">${f.amount.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-slate-300">{f.reason}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            f.status === 'unpaid'
-                              ? 'bg-rose-500/20 text-rose-300'
-                              : 'bg-emerald-500/20 text-emerald-300'
-                          }`}
-                        >
-                          {f.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-400">
-                        {new Date(f.assessed_date).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))
+                  fines.map((f) => {
+                    const remainingDue = Math.max(0, f.amount - f.paid_amount);
+                    return (
+                      <tr key={f.id} className="hover:bg-slate-800/40">
+                        <td className="px-4 py-3 font-mono text-slate-500">#{f.id}</td>
+                        <td className="px-4 py-3">
+                          <span className="font-semibold text-white block">{f.member_name}</span>
+                          <span className="text-[10px] text-slate-500 font-mono">{f.membership_number}</span>
+                        </td>
+                        <td className="px-4 py-3 font-bold text-rose-400">${f.amount.toFixed(2)}</td>
+                        <td className="px-4 py-3 font-mono text-slate-300">${f.paid_amount.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-slate-300">{f.reason}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              f.status === 'unpaid'
+                                ? 'bg-rose-500/20 text-rose-300'
+                                : f.status === 'partially_paid'
+                                ? 'bg-amber-500/20 text-amber-300'
+                                : 'bg-emerald-500/20 text-emerald-300'
+                            }`}
+                          >
+                            {f.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-400">
+                          {new Date(f.assessed_date).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3">
+                          {f.status !== 'paid' && remainingDue > 0 ? (
+                            <button
+                              onClick={() => handlePayFine(f.id, remainingDue)}
+                              disabled={payingFineId === f.id}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded text-[10px] font-semibold transition-all flex items-center gap-1 shadow-sm"
+                            >
+                              {payingFineId === f.id ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <CheckCircle className="w-3 h-3" />
+                              )}
+                              <span>Settle ${remainingDue.toFixed(2)}</span>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3 text-emerald-500" /> Settled
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

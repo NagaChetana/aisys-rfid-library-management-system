@@ -61,6 +61,48 @@ class MockSmsAdapter(BaseNotificationAdapter):
         self._sent_sms.append(record)
         return True
 
+class MockPrintAdapter(BaseNotificationAdapter):
+    """
+    Offline Provider-Neutral Mock Receipt & Slip Printer Adapter (FR09, Module C).
+    Formats thermal print job slips with standard ESC/POS layout emulation.
+    """
+    def __init__(self):
+        self._print_jobs: List[Dict[str, Any]] = []
+
+    def send(self, recipient: str, subject: Optional[str], body: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
+        doc_type = subject or "Circulation Receipt"
+        slip_text = (
+            f"========================================\n"
+            f"       AISYS INTELLIGENT LIBRARY        \n"
+            f"       {doc_type.upper()}               \n"
+            f"========================================\n"
+            f"Recipient: {recipient}\n"
+            f"Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+            f"----------------------------------------\n"
+            f"{body}\n"
+            f"========================================\n"
+            f"  Thank you for using AISYS Library!    \n"
+            f"========================================\n"
+        )
+        record = {
+            "channel": "print",
+            "recipient": recipient,
+            "document_type": doc_type,
+            "slip_text": slip_text,
+            "metadata": metadata or {},
+            "printed_at": datetime.now(timezone.utc).isoformat(),
+            "status": "printed"
+        }
+        self._print_jobs.append(record)
+        return True
+
+    def get_print_jobs(self) -> List[Dict[str, Any]]:
+        return list(self._print_jobs)
+
+    def clear(self):
+        self._print_jobs.clear()
+
 # Default active adapters
 default_email_adapter = MockEmailAdapter()
 default_sms_adapter = MockSmsAdapter()
+default_print_adapter = MockPrintAdapter()

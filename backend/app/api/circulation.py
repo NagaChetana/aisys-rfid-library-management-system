@@ -1,15 +1,18 @@
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.core.database import get_db
-from app.core.security import get_current_user_optional, require_role
+from app.core.security import get_current_user_optional, get_current_user, require_role
+from app.models.user import User
 from app.models.circulation import CirculationTransaction, Fine
 from app.schemas.circulation import (
     CheckoutRequest, CheckinRequest, RenewRequest,
     CirculationTransactionOut, DueDateEnquiryOut, FineOut
 )
 from app.services import circulation_service
+from app.services.audit_service import log_audit_event
 
 router = APIRouter(prefix="/circulation", tags=["Circulation & Fines"])
 
@@ -183,21 +186,62 @@ def due_date_enquiry(
 def get_circulation_history(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Search term for accession, title, member, or transaction ID"),
     member_id: Optional[int] = Query(None),
     book_item_id: Optional[int] = Query(None),
     transaction_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="Status filter: all, active, returned, overdue"),
+    protocol: Optional[str] = Query(None, description="Protocol filter: all, INTERNAL_UI, NCIP_2_0, SIP2"),
     active_only: bool = Query(False),
     db: Session = Depends(get_db)
 ):
-    query = db.query(CirculationTransaction)
+    from app.models.catalog import BookItem, Book
+    from app.models.member import Member
+    from sqlalchemy import or_
+
+    query = db.query(CirculationTransaction).outerjoin(
+        CirculationTransaction.book_item
+    ).outerjoin(
+        BookItem.book
+    ).outerjoin(
+        CirculationTransaction.member
+    )
+
+    if q and q.strip():
+        term = q.strip()
+        or_clauses = [
+            BookItem.accession_number.ilike(f"%{term}%"),
+            Book.title.ilike(f"%{term}%"),
+            Member.full_name.ilike(f"%{term}%"),
+            Member.membership_number.ilike(f"%{term}%")
+        ]
+        if term.isdigit():
+            or_clauses.append(CirculationTransaction.id == int(term))
+        elif term.startswith("#") and term[1:].isdigit():
+            or_clauses.append(CirculationTransaction.id == int(term[1:]))
+        query = query.filter(or_(*or_clauses))
+
     if member_id:
         query = query.filter(CirculationTransaction.member_id == member_id)
     if book_item_id:
         query = query.filter(CirculationTransaction.book_item_id == book_item_id)
-    if transaction_type:
-        query = query.filter(CirculationTransaction.transaction_type == transaction_type)
-    if active_only:
+    if transaction_type and transaction_type.lower() != "all":
+        query = query.filter(CirculationTransaction.transaction_type == transaction_type.lower())
+
+    now = datetime.now(timezone.utc)
+    if status and status.lower() != "all":
+        st = status.lower()
+        if st == "active":
+            query = query.filter(CirculationTransaction.return_date.is_(None))
+        elif st == "returned":
+            query = query.filter(CirculationTransaction.return_date.isnot(None))
+        elif st == "overdue":
+            query = query.filter(CirculationTransaction.return_date.is_(None), CirculationTransaction.due_date < now)
+    elif active_only:
         query = query.filter(CirculationTransaction.return_date.is_(None))
+
+    if protocol and protocol.upper() != "ALL":
+        query = query.filter(CirculationTransaction.protocol == protocol.upper())
 
     total = query.count()
     txs = query.order_by(desc(CirculationTransaction.id)).offset(skip).limit(limit).all()
@@ -210,6 +254,7 @@ def get_fines(
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
+    circulation_service.reconcile_member_fine_balances(db)
     query = db.query(Fine)
     if member_id:
         query = query.filter(Fine.member_id == member_id)
@@ -233,3 +278,84 @@ def get_fines(
         )
         for f in fines
     ]
+
+@router.post("/fines/{fine_id}/pay", response_model=FineOut)
+def pay_fine(
+    fine_id: int,
+    payload: Optional[Dict[str, Any]] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Records payment or settlement of a patron fine (FR04, FR11). Requires authenticated operator. Prevents duplicate or excessive payment."""
+    fine = db.query(Fine).filter(Fine.id == fine_id).first()
+    if not fine:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fine record not found")
+
+    if fine.status == "paid":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fine is already fully paid and settled."
+        )
+
+    remaining_due = round(fine.amount - fine.paid_amount, 2)
+    if remaining_due <= 0:
+        fine.status = "paid"
+        if not fine.settled_date:
+            fine.settled_date = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fine is already fully paid and settled."
+        )
+
+    payment_amount = float(payload.get("amount", remaining_due)) if payload and "amount" in payload else remaining_due
+    payment_amount = round(payment_amount, 2)
+    if payment_amount <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment amount must be greater than zero.")
+
+    if payment_amount > remaining_due:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Payment amount (${payment_amount:.2f}) exceeds remaining balance (${remaining_due:.2f})."
+        )
+
+    fine.paid_amount = round(fine.paid_amount + payment_amount, 2)
+    if fine.paid_amount >= fine.amount:
+        fine.status = "paid"
+        fine.settled_date = datetime.now(timezone.utc)
+    else:
+        fine.status = "partially_paid"
+
+    # Reduce patron outstanding balance
+    if fine.member:
+        fine.member.fine_balance = max(0.0, round(fine.member.fine_balance - payment_amount, 2))
+
+    log_audit_event(
+        db,
+        action="FINE_PAYMENT_RECORDED",
+        resource_type="fine",
+        resource_id=str(fine.id),
+        actor_user_id=user.id if user else None,
+        details={
+            "member_id": fine.member_id,
+            "payment_amount": payment_amount,
+            "new_status": fine.status,
+            "remaining_fine_balance": fine.member.fine_balance if fine.member else 0.0
+        }
+    )
+    db.commit()
+    db.refresh(fine)
+
+    return FineOut(
+        id=fine.id,
+        member_id=fine.member_id,
+        member_name=fine.member.full_name if fine.member else "Unknown",
+        membership_number=fine.member.membership_number if fine.member else "Unknown",
+        circulation_transaction_id=fine.circulation_transaction_id,
+        amount=fine.amount,
+        paid_amount=fine.paid_amount,
+        status=fine.status,
+        reason=fine.reason,
+        assessed_date=fine.assessed_date,
+        settled_date=fine.settled_date
+    )

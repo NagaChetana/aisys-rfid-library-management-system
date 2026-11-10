@@ -32,3 +32,43 @@ def send_test_notification(
         subject=req.subject,
         body=req.body
     )
+
+@router.post("/{notification_id}/retry", response_model=NotificationOut)
+def retry_notification(
+    notification_id: int,
+    db: Session = Depends(get_db)
+):
+    """Retries delivery of a failed or queued notification (FR09)."""
+    from fastapi import HTTPException
+    try:
+        return notification_service.retry_failed_notification(db, notification_id)
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ve))
+
+@router.get("/adapters")
+def list_notification_adapters():
+    """Lists registered provider-neutral notification gateways (FR09)."""
+    from app.notifications.adapters import default_email_adapter, default_sms_adapter, default_print_adapter
+    return {
+        "adapters": [
+            {
+                "channel": "email",
+                "provider": "Mock SMTP/SES Gateway",
+                "status": "active",
+                "sent_count": len(default_email_adapter.get_sent_mail())
+            },
+            {
+                "channel": "sms",
+                "provider": "Mock SMS Gateway (SMPP / Twilio)",
+                "status": "active",
+                "sent_count": len(default_sms_adapter._sent_sms)
+            },
+            {
+                "channel": "print",
+                "provider": "Mock Thermal Slip Printer (ESC/POS)",
+                "status": "active",
+                "printed_count": len(default_print_adapter.get_print_jobs())
+            }
+        ]
+    }
+

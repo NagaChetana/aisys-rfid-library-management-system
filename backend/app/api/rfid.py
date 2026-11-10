@@ -178,3 +178,60 @@ def simulate_smart_card_tap(
         "smart_card_uid": card_uid,
         "detail": "Card UID is unassigned."
     }
+
+# --- READER CLIENT REGISTRY & ACTIVITY (FR03) ---
+
+@router.get("/readers")
+def list_reader_clients():
+    """Lists registered RFID readers with live status, IP, and throughput (FR03)."""
+    return reader_service.reader_registry.list_readers()
+
+@router.post("/readers/heartbeat")
+def record_reader_heartbeat(payload: dict):
+    """Heartbeat endpoint for RFID reader clients and gateways (FR03)."""
+    reader_id = payload.get("reader_id")
+    if not reader_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="reader_id is required")
+    status_str = payload.get("status", "online")
+    ip_addr = payload.get("ip_address")
+    return reader_service.reader_registry.record_heartbeat(reader_id, status=status_str, ip_address=ip_addr)
+
+# --- RFID TAG HEALTH & STATUS MONITORING (FR05) ---
+
+@router.get("/tags/health")
+def get_tag_health_summary(db: Session = Depends(get_db)):
+    """Provides RFID tag fleet health, status distribution, and EAS integrity (FR05)."""
+    from datetime import datetime, timezone, timedelta
+    from app.models.catalog import BookItem
+    from sqlalchemy import func
+
+    total_tags = db.query(RfidTag).count()
+    active_tags = db.query(RfidTag).filter(RfidTag.status == "active").count()
+    damaged_tags = db.query(RfidTag).filter(RfidTag.status == "damaged").count()
+    decommissioned_tags = db.query(RfidTag).filter(RfidTag.status == "decommissioned").count()
+
+    eas_armed = db.query(RfidTag).filter(RfidTag.eas_bit == True).count()
+    eas_disarmed = db.query(RfidTag).filter(RfidTag.eas_bit == False).count()
+
+    total_items = db.query(BookItem).count()
+    coverage_pct = round((active_tags / total_items * 100), 1) if total_items > 0 else 0.0
+
+    # Scanned within last 30 days vs stale
+    threshold = datetime.now(timezone.utc) - timedelta(days=30)
+    recently_scanned = db.query(RfidTag).filter(RfidTag.last_scanned_at >= threshold).count()
+    stale_tags = total_tags - recently_scanned
+
+    return {
+        "total_tags": total_tags,
+        "active_tags": active_tags,
+        "damaged_tags": damaged_tags,
+        "decommissioned_tags": decommissioned_tags,
+        "eas_armed_count": eas_armed,
+        "eas_disarmed_count": eas_disarmed,
+        "coverage_percentage": coverage_pct,
+        "recently_scanned_count": recently_scanned,
+        "stale_unscanned_count": stale_tags,
+        "frequency_band": "865-868 MHz (EPC Gen2 / ISO 18000-6C)",
+        "rfid_health_grade": "A" if coverage_pct >= 90 else "B" if coverage_pct >= 75 else "C"
+    }
+

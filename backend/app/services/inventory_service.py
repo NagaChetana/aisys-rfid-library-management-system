@@ -217,7 +217,7 @@ def complete_session(db: Session, session_id: int) -> InventorySessionDetail:
                 )
             )
 
-    session.total_missing = len(missing_items)
+    session.total_missing = min(len(missing_items), session.total_expected) if session.total_expected > 0 else len(missing_items)
     session.status = "completed"
     session.completed_at = now
 
@@ -296,6 +296,14 @@ def get_session_detail(db: Session, session_id: int) -> InventorySessionDetail:
                 )
             )
 
+    # For completed sessions, preserve stored metrics and ensure missing never exceeds expected
+    final_missing = session.total_missing if session.status == "completed" else len(missing_items)
+    if session.total_expected > 0:
+        final_missing = min(final_missing, session.total_expected)
+
+    if session.status == "completed" and len(missing_items) > final_missing:
+        missing_items = missing_items[:final_missing]
+
     return InventorySessionDetail(
         id=session.id,
         session_name=session.session_name,
@@ -304,7 +312,7 @@ def get_session_detail(db: Session, session_id: int) -> InventorySessionDetail:
         status=session.status,
         total_expected=session.total_expected,
         total_scanned=session.total_scanned,
-        total_missing=len(missing_items),
+        total_missing=final_missing,
         total_misplaced=session.total_misplaced,
         started_at=session.started_at,
         completed_at=session.completed_at,

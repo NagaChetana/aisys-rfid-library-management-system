@@ -10,6 +10,7 @@ from app.models.notification import NotificationQueue
 from app.models.migration import MigrationBatch, StagedRecord
 from app.models.audit import AuditLog
 from app.models.setting import SystemSetting
+from app.models.acquisition import Supplier, PurchaseOrder, PurchaseOrderItem, SerialSubscription, SerialIssue
 
 __all__ = [
     "Base",
@@ -31,5 +32,10 @@ __all__ = [
     "MigrationBatch",
     "StagedRecord",
     "AuditLog",
-    "SystemSetting"
+    "SystemSetting",
+    "Supplier",
+    "PurchaseOrder",
+    "PurchaseOrderItem",
+    "SerialSubscription",
+    "SerialIssue"
 ]

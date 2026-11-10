@@ -23,6 +23,8 @@ export const RfidManagement: React.FC = () => {
   const [search, setSearch] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const [readers, setReaders] = useState<any[]>([]);
+  const [tagHealth, setTagHealth] = useState<any | null>(null);
 
   // Modals
   const [showTagModal, setShowTagModal] = useState<boolean>(false);
@@ -69,6 +71,22 @@ export const RfidManagement: React.FC = () => {
     return () => clearTimeout(timeout);
   }, [search, statusFilter]);
 
+  useEffect(() => {
+    async function loadTelemetry() {
+      try {
+        const [rList, hData] = await Promise.all([
+          api.getReaderClients(),
+          api.getTagHealthSummary()
+        ]);
+        setReaders(rList);
+        setTagHealth(hData);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadTelemetry();
+  }, []);
+
   const generateRandomEpc = () => {
     const randomHex = Array.from({ length: 16 }, () =>
       Math.floor(Math.random() * 16).toString(16).toUpperCase()
@@ -80,7 +98,10 @@ export const RfidManagement: React.FC = () => {
   const handleTagSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const itemIdNum = parseInt(tagItemId);
-    if (!itemIdNum) return;
+    if (!itemIdNum || isNaN(itemIdNum)) {
+      setTagError('Please enter a valid physical Book Item Copy ID (DB Copy ID from Book Catalog).');
+      return;
+    }
 
     setIsSubmitting(true);
     setTagError(null);
@@ -108,7 +129,10 @@ export const RfidManagement: React.FC = () => {
   const handleRetagSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const itemIdNum = parseInt(retagItemId);
-    if (!itemIdNum) return;
+    if (!itemIdNum || isNaN(itemIdNum)) {
+      setRetagError('Please enter a valid physical Book Item Copy ID (DB Copy ID from Book Catalog).');
+      return;
+    }
 
     setIsSubmitting(true);
     setRetagError(null);
@@ -193,8 +217,86 @@ export const RfidManagement: React.FC = () => {
             <RefreshCw className="w-4 h-4" />
             Re-tag / Replace
           </button>
+          <button
+            onClick={fetchTags}
+            disabled={loading}
+            title="Refresh tags registry"
+            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
+          </button>
         </div>
       </div>
+
+      {/* Reader Hardware Fleet & Tag Fleet Health (FR03, FR05) */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Tag Coverage</span>
+            <Tag className="w-4 h-4 text-cyan-400" />
+          </div>
+          <div className="text-xl font-bold font-mono text-cyan-400">
+            {tagHealth?.coverage_percentage || 0}%
+          </div>
+          <div className="text-[11px] text-slate-400">
+            {tagHealth?.active_tags || 0} active EPC Gen2 tags bound
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>EAS Security State</span>
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-xl font-bold font-mono text-emerald-400">
+            {tagHealth?.eas_armed_count || 0} Armed
+          </div>
+          <div className="text-[11px] text-slate-400">
+            {tagHealth?.eas_disarmed_count || 0} checked-out disarmed
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Reader Gateways</span>
+            <Radio className="w-4 h-4 text-purple-400" />
+          </div>
+          <div className="text-xl font-bold font-mono text-purple-400">
+            {readers.filter(r => r.status === 'online').length} / {readers.length} Online
+          </div>
+          <div className="text-[11px] text-slate-400">
+            Staff pads, handhelds & gates registered
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Fleet Health Grade</span>
+            <Sparkles className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="text-xl font-bold font-mono text-amber-400">
+            Grade {tagHealth?.rfid_health_grade || 'A'}
+          </div>
+          <div className="text-[11px] text-slate-400">
+            {tagHealth?.frequency_band || '865-868 MHz ISO 18000-6C'}
+          </div>
+        </div>
+      </div>
+
+      {/* Connected Readers Quick Status */}
+      {readers.length > 0 && (
+        <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl flex flex-wrap items-center gap-3 text-xs">
+          <span className="text-slate-400 font-semibold text-[11px]">Active Readers:</span>
+          {readers.map(r => (
+            <div key={r.reader_id} className="flex items-center space-x-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+              <span className={`w-2 h-2 rounded-full ${r.status === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+              <span className="font-medium text-white">{r.label}</span>
+              <span className="font-mono text-[10px] text-slate-400">({r.ip_address})</span>
+              <span className="text-[9px] px-1 bg-slate-800 text-cyan-300 rounded font-mono">{r.total_scans} reads</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/50 border border-slate-800 p-4 rounded-xl">
