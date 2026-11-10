@@ -274,7 +274,8 @@ Pre-existing collection books, circulation transactions, and patron histories re
 
 ```bash
 # 1. Clone or navigate to the repository
-cd ~/.gemini/antigravity/scratch/rfid-lms
+git clone https://github.com/NagaChetana/aisys-rfid-library-management-system.git
+cd aisys-rfid-library-management-system
 
 # 2. Setup Python Virtual Environment
 python3 -m venv venv
@@ -291,7 +292,7 @@ PYTHONPATH=backend uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reloa
 
 ```bash
 # 5. In a new terminal, launch the Frontend Client
-cd ~/.gemini/antigravity/scratch/rfid-lms/frontend
+cd aisys-rfid-library-management-system
 npm install
 npm run dev
 ```
